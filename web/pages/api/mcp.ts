@@ -6,14 +6,12 @@
  *
  * Supports:
  *   POST /api/mcp  — JSON-RPC messages (including initialize)
- *   GET  /api/mcp  — SSE stream for server-to-client notifications
- *   DELETE /api/mcp — session teardown
+ *   GET  /api/mcp  — not used in stateless JSON response mode
+ *   DELETE /api/mcp — no-op session teardown
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { normalizeClientType } from '../../server/auth';
 import { createMcpServer } from '../../server/mcpServer';
 
@@ -23,9 +21,6 @@ export const config = {
   api: { bodyParser: false },
 };
 
-const transports = new Map<string, StreamableHTTPServerTransport>();
-const sessionClientTypes = new Map<string, ReturnType<typeof normalizeClientType>>();
-
 /**
  * Read and parse the request body as JSON (only for POST).
  */
@@ -34,11 +29,15 @@ async function readJsonBody(req: NextApiRequest): Promise<unknown> {
   for await (const chunk of req) chunks.push(chunk as Buffer);
   const raw = Buffer.concat(chunks).toString('utf-8');
   if (!raw) return undefined;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
+  return JSON.parse(raw);
+}
+
+function jsonRpcError(res: NextApiResponse, status: number, code: number, message: string): void {
+  res.status(status).json({
+    jsonrpc: '2.0',
+    error: { code, message },
+    id: null,
+  });
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
@@ -52,74 +51,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
+  if (req.method === 'GET') {
+    res.setHeader('Allow', 'POST, DELETE');
+    jsonRpcError(res, 405, -32000, 'Method not allowed in stateless JSON response mode.');
+    return;
+  }
+
+  if (req.method === 'DELETE') {
+    res.status(204).end();
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST, DELETE');
+    jsonRpcError(res, 405, -32000, 'Method not allowed.');
+    return;
+  }
+
   try {
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
     const requestClientType = normalizeClientType(req.query.client_type);
-    let transport: StreamableHTTPServerTransport | undefined;
-
-    if (sessionId && transports.has(sessionId)) {
-      transport = transports.get(sessionId);
-      if (requestClientType) sessionClientTypes.set(sessionId, requestClientType);
-    } else if (!sessionId && req.method === 'POST') {
-      // Could be an initialize request — parse body first to check
-      const body = await readJsonBody(req);
-
-      if (body && isInitializeRequest(body)) {
-        transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (sid: string) => {
-            transports.set(sid, transport!);
-            sessionClientTypes.set(sid, requestClientType);
-          },
-        });
-
-        transport.onclose = () => {
-          const sid = transport!.sessionId;
-          if (sid) {
-            transports.delete(sid);
-            sessionClientTypes.delete(sid);
-          }
-        };
-
-        const server = createMcpServer({ clientType: requestClientType });
-        await server.connect(transport);
-
-        // Pass the already-parsed body
-        await transport.handleRequest(req, res, body);
-        return;
-      }
-
-      // Not an initialize request and no session — reject
-      res.status(400).json({
-        jsonrpc: '2.0',
-        error: { code: -32000, message: 'Bad Request: No valid session ID provided' },
-        id: null,
-      });
-      return;
-    } else {
-      res.status(400).json({
-        jsonrpc: '2.0',
-        error: { code: -32000, message: 'Bad Request: No valid session ID provided' },
-        id: null,
-      });
+    let body: unknown;
+    try {
+      body = await readJsonBody(req);
+    } catch {
+      jsonRpcError(res, 400, -32700, 'Parse error: Invalid JSON');
       return;
     }
 
-    // For existing sessions: POST needs parsed body, GET/DELETE do not
-    if (req.method === 'POST') {
-      const body = await readJsonBody(req);
-      await transport!.handleRequest(req, res, body);
-    } else {
-      await transport!.handleRequest(req, res);
-    }
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    });
+    const server = createMcpServer({ clientType: requestClientType });
+    await server.connect(transport);
+    await transport.handleRequest(req, res, body);
   } catch (error) {
     console.error('MCP endpoint error:', error);
     if (!res.headersSent) {
-      res.status(500).json({
-        jsonrpc: '2.0',
-        error: { code: -32603, message: 'Internal server error' },
-        id: null,
-      });
+      jsonRpcError(res, 500, -32603, 'Internal server error');
     }
   }
 }
