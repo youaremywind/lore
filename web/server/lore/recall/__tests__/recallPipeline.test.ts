@@ -29,10 +29,6 @@ vi.mock('../recallConfig', () => ({
 vi.mock('../recallDisplay', () => ({
   buildRecallDisplay: vi.fn(),
 }));
-vi.mock('../recallSessionReads', () => ({
-  getSessionReadUris: vi.fn(),
-}));
-
 import { getBootUriSet } from '../../memory/boot';
 import { fetchGlossarySemanticRows } from '../../search/glossarySemantic';
 import { countQueryTokens } from '../../view/viewBuilders';
@@ -50,7 +46,6 @@ import {
 } from '../recallConfig';
 import { buildRecallDisplay } from '../recallDisplay';
 import { runRecallPipeline } from '../recallPipeline';
-import { getSessionReadUris } from '../recallSessionReads';
 
 const mockGetBootUriSet = vi.mocked(getBootUriSet);
 const mockFetchGlossarySemanticRows = vi.mocked(fetchGlossarySemanticRows);
@@ -65,7 +60,6 @@ const mockLoadRecallDisplayConfig = vi.mocked(loadRecallDisplayConfig);
 const mockLoadRecallSafetyConfig = vi.mocked(loadRecallSafetyConfig);
 const mockLoadRecallScoringConfig = vi.mocked(loadRecallScoringConfig);
 const mockBuildRecallDisplay = vi.mocked(buildRecallDisplay);
-const mockGetSessionReadUris = vi.mocked(getSessionReadUris);
 
 describe('runRecallPipeline', () => {
   const bootUriSet = new Set(['core://boot/z', 'core://boot/a']);
@@ -89,7 +83,6 @@ describe('runRecallPipeline', () => {
   const displayConfig = {
     min_display_score: 0.33,
     max_display_items: 4,
-    read_node_display_mode: 'soft',
   };
   const exactRows = [{ uri: 'core://exact', exact_score: 0.9 }];
   const glossaryRows = [{ uri: 'core://glossary', glossary_semantic_score: 0.7 }];
@@ -114,7 +107,6 @@ describe('runRecallPipeline', () => {
       {
         ...aggregated[0],
         score_display: 0.93,
-        read: false,
         boot: false,
       },
     ],
@@ -122,7 +114,6 @@ describe('runRecallPipeline', () => {
       {
         ...aggregated[0],
         score_display: 0.93,
-        read: false,
         boot: false,
       },
     ],
@@ -130,11 +121,10 @@ describe('runRecallPipeline', () => {
       {
         ...aggregated[0],
         score_display: 0.93,
-        read: false,
         boot: false,
       },
     ],
-    suppressed: { boot: 1, read: 2, score: 3 },
+    suppressed: { boot: 1, score: 3 },
   };
 
   beforeEach(() => {
@@ -151,7 +141,6 @@ describe('runRecallPipeline', () => {
     mockFetchGlossarySemanticRows.mockResolvedValue(glossaryRows as any);
     mockFetchDenseMemoryViewRows.mockResolvedValue(denseRows as any);
     mockFetchLexicalMemoryViewRows.mockResolvedValue(lexicalRows as any);
-    mockGetSessionReadUris.mockResolvedValue(new Set(['core://read']));
     mockBuildRecallDisplay.mockReturnValue(displayResult as any);
   });
 
@@ -169,7 +158,6 @@ describe('runRecallPipeline', () => {
         min_display_score: 0.4,
         min_score: 0.2,
         score_precision: 3,
-        read_node_display_mode: 'hard',
       } as any,
       { aggregateCandidates },
     );
@@ -198,7 +186,6 @@ describe('runRecallPipeline', () => {
       limit: 40,
       domain: 'project',
     });
-    expect(mockGetSessionReadUris).toHaveBeenCalledWith('session-1');
     expect(aggregateCandidates).toHaveBeenCalledWith({
       exactRows,
       glossarySemanticRows: glossaryRows,
@@ -212,14 +199,12 @@ describe('runRecallPipeline', () => {
     });
     expect(mockBuildRecallDisplay).toHaveBeenCalledWith({
       ranked: aggregated,
-      readUris: new Set(['core://read']),
       bootUris: bootUriSet,
       scorePrecision: 3,
       minScore: 0.2,
       candidateCount: 5,
       maxDisplayItems: 5,
       minDisplayScore: 0.4,
-      readNodeDisplayMode: 'hard',
     });
     expect(result.query).toBe('actual query');
     expect(result.session_id).toBe('session-1');
@@ -232,7 +217,7 @@ describe('runRecallPipeline', () => {
     expect(result.items).toBe(displayResult.items);
     expect(result.suppressed).toBe(displayResult.suppressed);
     expect(result.boot_uris).toEqual(['core://boot/a', 'core://boot/z']);
-    expect(result.read_node_display_mode).toBe('hard');
+    expect(result).not.toHaveProperty('read_node_display_mode');
     expect(result.retrieval_meta).toEqual({
       exact_candidates: 1,
       glossary_semantic_candidates: 1,
@@ -297,12 +282,11 @@ describe('runRecallPipeline', () => {
 
   it('falls back to the original query and disables boot suppression when requested', async () => {
     const aggregateCandidates = vi.fn().mockReturnValue([]);
-    mockGetSessionReadUris.mockResolvedValueOnce(new Set());
     mockBuildRecallDisplay.mockReturnValueOnce({
       ranked: [],
       candidates: [],
       items: [],
-      suppressed: { boot: 0, read: 0, score: 0 },
+      suppressed: { boot: 0, score: 0 },
     } as any);
 
     const rawQuery = 'Sender (untrusted metadata): ```json {"name":"bot"}```';
@@ -325,14 +309,12 @@ describe('runRecallPipeline', () => {
       limit: 96,
       domain: null,
     });
-    expect(mockGetSessionReadUris).toHaveBeenCalledWith(undefined);
     expect(mockBuildRecallDisplay).toHaveBeenCalledWith(expect.objectContaining({
       bootUris: expect.any(Set),
       candidateCount: 12,
       maxDisplayItems: 4,
       minDisplayScore: 0.33,
       minScore: 0,
-      readNodeDisplayMode: 'soft',
     }));
     const buildDisplayArg = mockBuildRecallDisplay.mock.calls.at(-1)?.[0];
     expect(buildDisplayArg?.bootUris.size).toBe(0);

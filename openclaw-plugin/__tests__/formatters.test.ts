@@ -170,12 +170,6 @@ describe('formatRecallBlock', () => {
     expect(result).toContain('0.123');
   });
 
-  it('marks read items', () => {
-    const result = formatRecallBlock([
-      { uri: 'core://a', score_display: 0.9, read: true, cues: ['term'] },
-    ]);
-    expect(result).toContain('read');
-  });
 });
 
 describe('readCueList', () => {

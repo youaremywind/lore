@@ -19,11 +19,6 @@ vi.mock('../lore/memory/write', () => ({
 vi.mock('../lore/search/search', () => ({
   searchMemories: vi.fn(),
 }));
-vi.mock('../lore/memory/session', () => ({
-  markSessionRead: vi.fn(),
-  listSessionReads: vi.fn(),
-  clearSessionReads: vi.fn(),
-}));
 vi.mock('../lore/recall/recallEventLog', () => ({
   markRecallEventsUsedInAnswer: vi.fn(),
 }));
@@ -34,9 +29,13 @@ vi.mock('../lore/ops/policy', () => ({
 }));
 
 import { createMcpServer } from '../mcpServer';
+import { getNodePayload } from '../lore/memory/browse';
+import { markRecallEventsUsedInAnswer } from '../lore/recall/recallEventLog';
 import { createNode, deleteNodeByPath, moveNode, updateNodeByPath } from '../lore/memory/write';
 import { validateCreatePolicy, validateDeletePolicy, validateUpdatePolicy } from '../lore/ops/policy';
 
+const mockGetNodePayload = vi.mocked(getNodePayload);
+const mockMarkRecallEventsUsedInAnswer = vi.mocked(markRecallEventsUsedInAnswer);
 const mockCreateNode = vi.mocked(createNode);
 const mockUpdateNodeByPath = vi.mocked(updateNodeByPath);
 const mockDeleteNodeByPath = vi.mocked(deleteNodeByPath);
@@ -79,6 +78,34 @@ describe('embedded MCP contract projections', () => {
       session_id: 'sess-1',
       query_id: 'query-1',
     }).success).toBe(true);
+  });
+
+  it('does not expose session read tracking tools', () => {
+    const server = createMcpServer();
+    const tools = (server as any)._registeredTools;
+
+    expect(tools.lore_list_session_reads).toBeUndefined();
+    expect(tools.lore_clear_session_reads).toBeUndefined();
+  });
+
+  it('records recall usage without session read tracking when opening a recalled node', async () => {
+    mockGetNodePayload.mockResolvedValueOnce({
+      node: { uri: 'core://agent', node_uuid: 'node-1', content: 'Agent' },
+      children: [],
+    } as any);
+
+    const handler = getToolHandler('lore_get_node');
+    const result = await handler({ uri: 'core://agent', session_id: 'sess-1', query_id: 'query-1' });
+
+    expect(result.content[0].text).toContain('core://agent');
+    expect(mockMarkRecallEventsUsedInAnswer).toHaveBeenCalledWith({
+      queryId: 'query-1',
+      sessionId: 'sess-1',
+      nodeUris: ['core://agent'],
+      source: 'mcp:lore_get_node',
+      success: true,
+      clientType: null,
+    });
   });
 
   it('projects create receipts from canonical uri fields', async () => {
@@ -201,7 +228,7 @@ describe('embedded MCP contract projections', () => {
   it('projects delete receipts from deleted and canonical uri fields', async () => {
     mockValidateDeletePolicy.mockResolvedValueOnce({
       errors: [],
-      warnings: ['read before delete'],
+      warnings: ['delete warning'],
     } as any);
     mockDeleteNodeByPath.mockResolvedValueOnce({
       success: true,
@@ -219,7 +246,7 @@ describe('embedded MCP contract projections', () => {
 
     expect(result.content[0].text).toContain('Deleted core://legacy/profile (canonical: core://canonical/profile)');
     expect(result.content[0].text).toContain('Policy warnings:');
-    expect(result.content[0].text).toContain('read before delete');
+    expect(result.content[0].text).toContain('delete warning');
   });
 
   it('projects move receipts from canonical old and new uri fields', async () => {

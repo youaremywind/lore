@@ -57,7 +57,7 @@ export function isDreamPolicyValidationBlocked(result: Record<string, unknown> |
 export async function applyDreamWritePolicy(
   name: string,
   args: Record<string, unknown>,
-  eventContext: DreamToolEventContext,
+  _eventContext: DreamToolEventContext,
 ): Promise<DreamWritePolicyResult> {
   switch (name) {
     case 'create_node': {
@@ -76,7 +76,6 @@ export async function applyDreamWritePolicy(
         path,
         priority: toFiniteNumber(args.priority),
         disclosure: typeof args.disclosure === 'string' ? args.disclosure : undefined,
-        sessionId: eventContext.session_id ?? null,
       });
       return policyResult.errors.length > 0
         ? { blockedResult: buildPolicyBlockedResult(policyResult.errors, policyResult.warnings), warnings: [] }
@@ -87,7 +86,6 @@ export async function applyDreamWritePolicy(
       const policyResult = await validateDeletePolicy({
         domain,
         path,
-        sessionId: eventContext.session_id ?? null,
       });
       return policyResult.errors.length > 0
         ? { blockedResult: buildPolicyBlockedResult(policyResult.errors, policyResult.warnings), warnings: [] }

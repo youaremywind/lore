@@ -46,7 +46,6 @@ export interface LoadedScoringConfig extends ScoringConfig {
 export interface LoadedDisplayConfig {
   min_display_score: unknown;
   max_display_items: unknown;
-  read_node_display_mode: unknown;
 }
 
 export interface LoadedSafetyConfig {
@@ -87,12 +86,10 @@ export async function loadRecallDisplayConfig(): Promise<LoadedDisplayConfig> {
   const s = await getSettingsBatch([
     'recall.display.min_display_score',
     'recall.display.max_display_items',
-    'recall.display.read_node_display_mode',
   ]);
   return {
     min_display_score: s['recall.display.min_display_score'],
     max_display_items: s['recall.display.max_display_items'],
-    read_node_display_mode: s['recall.display.read_node_display_mode'],
   };
 }
 

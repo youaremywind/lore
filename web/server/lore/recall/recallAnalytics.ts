@@ -438,7 +438,6 @@ export function reshapeEventsForDebugView(rows: EventRow[], mergedCandidates: Me
       cues: c.cues,
       client_type: c.client_type,
       score_breakdown: c.score_breakdown,
-      read: false,
       boot: false,
     }));
 

@@ -20,7 +20,7 @@
 
 ## 2. Design philosophy
 
-Lore is a long-term memory system for AI agents. It gives an agent a durable memory graph, a fixed startup baseline, per-prompt recall, explicit read tracking, and cautious write tools.
+Lore is a long-term memory system for AI agents. It gives an agent a durable memory graph, a fixed startup baseline, per-prompt recall, adoption tracking, and cautious write tools.
 
 Supported runtimes:
 
@@ -40,7 +40,7 @@ Most agent memory systems stop at retrieval. Lore focuses on the full memory lif
 - **Read before trust** — recalled candidates are cues; the agent opens the memory node before relying on it.
 - **URI-first graph** — memories live at durable URIs such as `core://agent`, `preferences://user`, and `project://my_project`.
 - **Disclosure triggers** — each memory carries a natural-language condition that explains when it should surface.
-- **Policy-guided writes** — priority budgets, read-before-modify checks, and boot-node protection keep the graph stable.
+- **Policy-guided writes** — priority budgets, disclosure quality checks, and boot-node protection keep the graph stable.
 - **Dream maintenance** — scheduled review can inspect recall quality, structure, and stale nodes with rollback history.
 
 Lore is built for agents that need continuity across sessions, tools, and runtimes.

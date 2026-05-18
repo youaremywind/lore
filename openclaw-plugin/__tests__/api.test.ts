@@ -36,15 +36,6 @@ describe('pickPluginConfig', () => {
     expect(cfg.baseUrl).toBe('http://host:1234');
   });
 
-  it('defaults readNodeDisplayMode to soft', () => {
-    const cfg = pickPluginConfig({});
-    expect(cfg.readNodeDisplayMode).toBe('soft');
-  });
-
-  it('sets readNodeDisplayMode to hard when configured', () => {
-    const cfg = pickPluginConfig({ pluginConfig: { readNodeDisplayMode: 'hard' } });
-    expect(cfg.readNodeDisplayMode).toBe('hard');
-  });
 
   it('uses LORE_API_TOKEN env variable when no apiToken in config', () => {
     process.env.LORE_API_TOKEN = 'env-token-123';

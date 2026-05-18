@@ -60,7 +60,6 @@ import {
   getRecallRuntimeConfig,
 } from '../recall';
 import { startRecallEventLog } from '../recallEventDispatch';
-import { getSessionReadUris } from '../recallSessionReads';
 import { logRecallEvents } from '../recallEventLog';
 import { sql } from '../../../db';
 import { buildCandidateKey, extractCueTerms, getViewPrior, getMemoryViewRuntimeConfig } from '../../view/memoryViewQueries';
@@ -96,7 +95,6 @@ function makeSettingsMock(overrides: Record<string, unknown> = {}) {
       'views.prior.question': 0.02,
       'recall.display.min_display_score': 0.1,
       'recall.display.max_display_items': 8,
-      'recall.display.read_node_display_mode': 'soft',
       'recall.safety.max_query_chars': 200,
       'recall.safety.timeout_ms': 2000,
       ...overrides,
@@ -270,8 +268,8 @@ describe('startRecallEventLog', () => {
       glossarySemanticRows: [{ uri: 'core://glossary' }],
       denseRows: [{ uri: 'core://dense' }],
       lexicalRows: [{ uri: 'core://lexical' }],
-      rankedCandidates: [{ uri: 'core://ranked', score: 0.9, score_display: 0.9, read: false, boot: false, matched_on: [], cues: [], priority: 1, exact_score: 0, glossary_semantic_score: 0, dense_score: 0, lexical_score: 0, score_breakdown: {} }],
-      displayedItems: [{ uri: 'core://displayed', score: 0.8, score_display: 0.8, read: false, boot: false, matched_on: [], cues: [], priority: 1, exact_score: 0, glossary_semantic_score: 0, dense_score: 0, lexical_score: 0, score_breakdown: {} }],
+      rankedCandidates: [{ uri: 'core://ranked', score: 0.9, score_display: 0.9, boot: false, matched_on: [], cues: [], priority: 1, exact_score: 0, glossary_semantic_score: 0, dense_score: 0, lexical_score: 0, score_breakdown: {} }],
+      displayedItems: [{ uri: 'core://displayed', score: 0.8, score_display: 0.8, boot: false, matched_on: [], cues: [], priority: 1, exact_score: 0, glossary_semantic_score: 0, dense_score: 0, lexical_score: 0, score_breakdown: {} }],
       retrievalMeta: { strategy: 'raw_plus_lex_damp' },
       sessionId: 'session-1',
       clientType: 'claudecode',
@@ -314,31 +312,6 @@ describe('recall query helpers', () => {
   it('falls back to the original query when sanitization empties the string', () => {
     const query = 'Sender (untrusted metadata): ```json {"name":"bot"}```';
     expect(resolveRecallQuery(query)).toBe(query);
-  });
-});
-
-describe('getSessionReadUris', () => {
-  beforeEach(() => {
-    mockSql.mockReset();
-  });
-
-  it('returns empty set when session id is missing', async () => {
-    await expect(getSessionReadUris(null)).resolves.toEqual(new Set());
-    expect(mockSql).not.toHaveBeenCalled();
-  });
-
-  it('loads read URIs for the session', async () => {
-    mockSql.mockResolvedValueOnce({
-      rows: [{ uri: 'core://a' }, { uri: 'core://b' }, { uri: 'core://a' }],
-    } as any);
-
-    const result = await getSessionReadUris('session-1');
-
-    expect(mockSql).toHaveBeenCalledWith(
-      'SELECT uri FROM session_read_nodes WHERE session_id = $1',
-      ['session-1'],
-    );
-    expect([...result]).toEqual(['core://a', 'core://b']);
   });
 });
 
@@ -658,7 +631,7 @@ describe('loadDisplayConfig (via getRecallRuntimeConfig)', () => {
     expect(config.display).toBeDefined();
     expect(config.display).toHaveProperty('min_display_score');
     expect(config.display).toHaveProperty('max_display_items');
-    expect(config.display).toHaveProperty('read_node_display_mode');
+    expect(config.display).not.toHaveProperty('read_node_display_mode');
   });
 
   it('display values come from settings mock', async () => {
@@ -666,12 +639,11 @@ describe('loadDisplayConfig (via getRecallRuntimeConfig)', () => {
       makeSettingsMock({
         'recall.display.min_display_score': 0.25,
         'recall.display.max_display_items': 12,
-        'recall.display.read_node_display_mode': 'hard',
       }) as ReturnType<typeof vi.fn>,
     );
     const config = await getRecallRuntimeConfig(null);
     expect(config.display.min_display_score).toBe(0.25);
     expect(config.display.max_display_items).toBe(12);
-    expect(config.display.read_node_display_mode).toBe('hard');
+    expect(config.display).not.toHaveProperty('read_node_display_mode');
   });
 });

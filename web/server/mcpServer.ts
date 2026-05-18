@@ -14,7 +14,6 @@ import { bootView } from './lore/memory/boot';
 import { getNodePayload, listDomains } from './lore/memory/browse';
 import { createNode, updateNodeByPath, deleteNodeByPath, moveNode } from './lore/memory/write';
 import { searchMemories } from './lore/search/search';
-import { markSessionRead, listSessionReads, clearSessionReads } from './lore/memory/session';
 import { markRecallEventsUsedInAnswer } from './lore/recall/recallEventLog';
 import { validateCreatePolicy, validateUpdatePolicy, validateDeletePolicy } from './lore/ops/policy';
 
@@ -108,26 +107,16 @@ export function createMcpServer(context: McpServerContext = {}): InstanceType<ty
         const node = data?.node || {};
         const sid = typeof args?.session_id === 'string' && args.session_id.trim() ? args.session_id.trim() : 'mcp-embedded';
         const qid = typeof args?.query_id === 'string' ? args.query_id.trim() : '';
-        if (node.uri && node.node_uuid) {
+        if (node.uri && qid) {
           try {
-            await Promise.all([
-              markSessionRead({
-                session_id: sid,
-                uri: node.uri,
-                node_uuid: node.node_uuid,
-                source: 'mcp:lore_get_node',
-              }),
-              qid
-                ? markRecallEventsUsedInAnswer({
-                    queryId: qid,
-                    sessionId: sid,
-                    nodeUris: [node.uri],
-                    source: 'mcp:lore_get_node',
-                    success: true,
-                    clientType: context.clientType ?? null,
-                  })
-                : Promise.resolve(),
-            ]);
+            await markRecallEventsUsedInAnswer({
+              queryId: qid,
+              sessionId: sid,
+              nodeUris: [node.uri],
+              source: 'mcp:lore_get_node',
+              success: true,
+              clientType: context.clientType ?? null,
+            });
           } catch { /* best effort */ }
         }
 
@@ -272,20 +261,17 @@ export function createMcpServer(context: McpServerContext = {}): InstanceType<ty
       disclosure: z.string().optional().describe('New disclosure / trigger condition; omit to leave disclosure unchanged.'),
       glossary_add: z.array(z.string()).optional().describe('Keywords to add as part of this same node update event.'),
       glossary_remove: z.array(z.string()).optional().describe('Keywords to remove as part of this same node update event.'),
-      session_id: z.string().optional().describe('Session identifier from the <recall session_id="..."> tag.'),
     },
     async (args) => {
       try {
         const { domain, path } = resolveUri(args, defaultDomain);
         if (!path) throw new Error('uri is required.');
-        const sid = typeof args?.session_id === 'string' && args.session_id.trim() ? args.session_id.trim() : 'mcp-embedded';
 
         // -- policy gate --
         const policyResult = await validateUpdatePolicy({
           domain, path,
           priority: Number.isFinite(args?.priority) ? args!.priority! : undefined,
           disclosure: typeof args?.disclosure === 'string' ? args.disclosure : undefined,
-          sessionId: sid,
         });
         if (policyResult.errors.length > 0) return fail('Lore update blocked by policy', policyResult.errors.join('; '));
 
@@ -322,16 +308,14 @@ export function createMcpServer(context: McpServerContext = {}): InstanceType<ty
     'Remove a memory path that is obsolete, duplicated, or no longer wanted.',
     {
       uri: z.string().describe('Full memory URI for the path you want to remove.'),
-      session_id: z.string().optional().describe('Session identifier from the <recall session_id="..."> tag.'),
     },
     async (args) => {
       try {
         const { domain, path } = resolveUri(args, defaultDomain);
         if (!path) throw new Error('uri is required.');
-        const sid = typeof args?.session_id === 'string' && args.session_id.trim() ? args.session_id.trim() : 'mcp-embedded';
 
         // -- policy gate --
-        const policyResult = await validateDeletePolicy({ domain, path, sessionId: sid });
+        const policyResult = await validateDeletePolicy({ domain, path });
         if (policyResult.errors.length > 0) return fail('Lore delete blocked by policy', policyResult.errors.join('; '));
 
         const result = await deleteNodeByPath({ domain, path }, {
@@ -365,45 +349,6 @@ export function createMcpServer(context: McpServerContext = {}): InstanceType<ty
         return ok(`Moved ${result.old_uri} → ${result.new_uri}`);
       } catch (error) {
         return fail('Lore move failed', error);
-      }
-    },
-  );
-
-  // ── lore_list_session_reads ──────────────────────────────────
-  server.tool(
-    'lore_list_session_reads',
-    'Show which memory nodes have already been opened in this session.',
-    {
-      session_id: z.string().describe('Session identifier.'),
-    },
-    async (args) => {
-      try {
-        const sessionId = String(args?.session_id || '').trim();
-        const data = await listSessionReads(sessionId);
-        const text = Array.isArray(data) && data.length > 0
-          ? (data as unknown as Record<string, unknown>[]).map((item: Record<string, unknown>) => `- ${item.uri} (${item.read_count})`).join('\n')
-          : 'No read nodes tracked for this session.';
-        return ok(text);
-      } catch (error) {
-        return fail('Lore session reads failed', error);
-      }
-    },
-  );
-
-  // ── lore_clear_session_reads ─────────────────────────────────
-  server.tool(
-    'lore_clear_session_reads',
-    'Reset per-session memory read tracking.',
-    {
-      session_id: z.string().describe('Session identifier.'),
-    },
-    async (args) => {
-      try {
-        const sessionId = String(args?.session_id || '').trim();
-        await clearSessionReads(sessionId);
-        return ok(`Cleared Lore read tracking for ${sessionId}`);
-      } catch (error) {
-        return fail('Lore clear session reads failed', error);
       }
     },
   );

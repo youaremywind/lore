@@ -163,8 +163,6 @@ def format_recall_block(items: List[Dict], session_id: Optional[str] = None, que
         
         cues = item.get("cues", [])
         cue_parts = []
-        if item.get("read"):
-            cue_parts.append("read")
         cue_parts.extend(str(c).strip() for c in cues[:3] if c)
         cue_text = " · ".join(cue_parts)
         
@@ -186,13 +184,4 @@ def format_domains(domains: List[Dict]) -> str:
         f"- {d.get('domain', '')} ({d.get('root_count', 0)}) — open root with lore_get_node uri=\"{d.get('domain', '')}://\" nav_only=true"
         for d in domains
     ]
-    return "\n".join(lines)
-
-
-def format_session_reads(reads: List[Dict]) -> str:
-    """Format session read list"""
-    if not reads:
-        return "No read nodes tracked for this session."
-    
-    lines = [f"- {r.get('uri', '')} ({r.get('read_count', 0)})" for r in reads]
     return "\n".join(lines)

@@ -12,5 +12,3 @@ provides_tools:
   - lore_move_node
   - lore_search
   - lore_list_domains
-  - lore_list_session_reads
-  - lore_clear_session_reads

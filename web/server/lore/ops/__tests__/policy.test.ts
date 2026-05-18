@@ -141,54 +141,21 @@ describe('validateUpdatePolicy', () => {
     vi.clearAllMocks();
   });
 
-  it('warns when node has not been read before modification', async () => {
+  it('ignores legacy read-before-modify settings when validating updates', async () => {
     mockGetSetting.mockImplementation(async (key) => {
       if (key === 'policy.read_before_modify_enabled') return true as any;
       if (key === 'policy.read_before_modify_window_minutes') return 10 as any;
       return false as any;
     });
-    // getRecentRead returns no rows → not read
-    mockSql.mockResolvedValue(makeResult([]));
 
     const result = await validateUpdatePolicy({
       domain: 'core',
       path: 'agent/prefs',
       sessionId: 'sess-1',
-    });
+    } as any);
 
-    expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0]).toContain('core://agent/prefs');
-    expect(result.warnings[0]).toContain('lore_get_node');
-  });
-
-  it('does not warn when node has been read recently', async () => {
-    mockGetSetting.mockImplementation(async (key) => {
-      if (key === 'policy.read_before_modify_enabled') return true as any;
-      if (key === 'policy.read_before_modify_window_minutes') return 10 as any;
-      return false as any;
-    });
-    // getRecentRead returns a row → was read
-    mockSql.mockResolvedValue(makeResult([{ 1: 1 }]));
-
-    const result = await validateUpdatePolicy({
-      domain: 'core',
-      path: 'agent/prefs',
-      sessionId: 'sess-1',
-    });
-
-    expect(result.warnings).toHaveLength(0);
-  });
-
-  it('returns no read warning when read_before_modify is disabled', async () => {
-    mockGetSetting.mockResolvedValue(false as any);
-
-    const result = await validateUpdatePolicy({
-      domain: 'core',
-      path: 'agent/prefs',
-      sessionId: 'sess-1',
-    });
-
-    expect(result.warnings).toHaveLength(0);
+    expect(result.warnings).toEqual([]);
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it('returns error when updating priority and budget exceeded', async () => {
@@ -277,41 +244,22 @@ describe('validateDeletePolicy', () => {
     vi.clearAllMocks();
   });
 
-  it('warns when node has not been read before deletion', async () => {
+  it('ignores legacy read-before-modify settings when validating deletions', async () => {
     mockGetSetting.mockImplementation(async (key) => {
       if (key === 'policy.read_before_modify_enabled') return true as any;
       if (key === 'policy.read_before_modify_window_minutes') return 10 as any;
       return false as any;
     });
-    mockSql.mockResolvedValue(makeResult([]));
 
     const result = await validateDeletePolicy({
       domain: 'core',
       path: 'old/node',
       sessionId: 'sess-x',
-    });
+    } as any);
 
-    expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0]).toContain('core://old/node');
-    expect(result.warnings[0]).toContain('lore_get_node');
-  });
-
-  it('does not warn when node was recently read', async () => {
-    mockGetSetting.mockImplementation(async (key) => {
-      if (key === 'policy.read_before_modify_enabled') return true as any;
-      if (key === 'policy.read_before_modify_window_minutes') return 10 as any;
-      return false as any;
-    });
-    mockSql.mockResolvedValue(makeResult([{ 1: 1 }]));
-
-    const result = await validateDeletePolicy({
-      domain: 'core',
-      path: 'old/node',
-      sessionId: 'sess-x',
-    });
-
-    expect(result.warnings).toHaveLength(0);
-    expect(result.errors).toHaveLength(0);
+    expect(result.warnings).toEqual([]);
+    expect(result.errors).toEqual([]);
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it('returns empty errors and warnings when all policies are disabled', async () => {
@@ -326,22 +274,4 @@ describe('validateDeletePolicy', () => {
     expect(result.warnings).toHaveLength(0);
   });
 
-  it('returns no warning when sessionId is null (cannot check read history)', async () => {
-    mockGetSetting.mockImplementation(async (key) => {
-      if (key === 'policy.read_before_modify_enabled') return true as any;
-      if (key === 'policy.read_before_modify_window_minutes') return 10 as any;
-      return false as any;
-    });
-    // getRecentRead returns false when sessionId is null
-    mockSql.mockResolvedValue(makeResult([]));
-
-    const result = await validateDeletePolicy({
-      domain: 'core',
-      path: 'old/node',
-      sessionId: null,
-    });
-
-    // With null sessionId, getRecentRead returns false → warns
-    expect(result.warnings).toHaveLength(1);
-  });
 });

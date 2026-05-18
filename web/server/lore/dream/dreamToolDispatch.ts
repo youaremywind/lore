@@ -12,7 +12,6 @@ import {
 import { searchMemories } from '../search/search';
 import { listMemoryViewsByNode } from '../view/memoryViewQueries';
 import { getDreamMemoryEventSummary, getNodeWriteHistory } from '../memory/writeEvents';
-import { markSessionRead } from '../memory/session';
 import { parseUri } from '../core/utils';
 import { inspectMemoryNodeForDream, inspectNeighbors, inspectTree, refreshOrInspectViews, validateMemoryChange } from './dreamToolReadHelpers';
 import {
@@ -32,28 +31,6 @@ function attachDreamPolicyWarnings(result: unknown, warnings: string[]): unknown
   };
 }
 
-async function trackDreamNodeRead(
-  uri: string,
-  nodeUuid: string | null | undefined,
-  eventContext: DreamMutationContext,
-  sourceSuffix: string,
-): Promise<void> {
-  const sessionId = eventContext.session_id ?? null;
-  const normalizedUri = String(uri || '').trim();
-  const normalizedNodeUuid = String(nodeUuid || '').trim();
-  if (!sessionId || !normalizedUri || !normalizedNodeUuid) return;
-  try {
-    await markSessionRead({
-      session_id: sessionId,
-      uri: normalizedUri,
-      node_uuid: normalizedNodeUuid,
-      source: `${eventContext.source}:${sourceSuffix}`,
-    });
-  } catch {
-    // best effort only
-  }
-}
-
 export async function dispatchDreamTool(
   name: string,
   args: Record<string, unknown>,
@@ -65,9 +42,7 @@ export async function dispatchDreamTool(
   switch (name) {
     case 'get_node': {
       const { domain, path } = parseUri(args.uri as string);
-      const result = await getNodePayload({ domain, path });
-      await trackDreamNodeRead(result.node?.uri as string, result.node?.node_uuid as string | null | undefined, eventContext, 'get_node');
-      return result;
+      return await getNodePayload({ domain, path });
     }
     case 'search':
       return await searchMemories({ query: args.query as string, limit: (args.limit as number) || 10 });

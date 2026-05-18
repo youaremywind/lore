@@ -222,9 +222,7 @@ export function loadGuidanceFile(): string {
       .replace(/lore_update_node/g, 'update_node')
       .replace(/lore_delete_node/g, 'delete_node')
       .replace(/lore_move_node/g, 'move_node')
-      .replace(/lore_list_domains/g, 'list_domains')
-      .replace(/lore_list_session_reads/g, 'session reads')
-      .replace(/lore_clear_session_reads/g, 'clear session');
+      .replace(/lore_list_domains/g, 'list_domains');
     return content;
   } catch {
     return '';

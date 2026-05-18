@@ -2,7 +2,6 @@ import { Type } from "@sinclair/typebox";
 import { textResult, fetchJson, hasRecallConfig } from "./api";
 import { resolveMemoryLocator, splitParentPathAndTitle, trimSlashes } from "./uri";
 import { formatNode, formatBootView, normalizeSearchResults, normalizeKeywordList } from "./formatters";
-import { markSessionRead } from "./hooks";
 
 // Shared TypeBox schemas for tool parameters
 const EmptySchema = Type.Object({});
@@ -75,14 +74,6 @@ export function registerTools(api: any, pluginCfg: any) {
         const qs = new URLSearchParams({ domain, path, nav_only: String(navOnly) });
         const data = await fetchJson(pluginCfg, `/browse/node?${qs.toString()}`, { method: "GET" });
         const node = data?.node || {};
-        if (sessionId && node?.uri) {
-          await markSessionRead(pluginCfg, {
-            sessionId,
-            uri: node.uri,
-            nodeUuid: node.node_uuid,
-            source: "tool:lore_get_node",
-          });
-        }
         if (queryId && node?.uri) {
           try {
             await fetchJson(pluginCfg, "/browse/recall/usage", {
@@ -249,7 +240,6 @@ export function registerTools(api: any, pluginCfg: any) {
       content: Type.Optional(Type.String({ description: "New content to replace the existing content; omit to leave content unchanged." })),
       priority: Type.Optional(Type.Integer({ minimum: 0, description: "New priority level; omit to leave priority unchanged." })),
       disclosure: Type.Optional(Type.String({ description: "New disclosure / trigger condition; omit to leave disclosure unchanged." })),
-      session_id: Type.Optional(Type.String({ description: "Session ID for policy validation (read-before-update check)." })),
       glossary_add: Type.Optional(Type.Array(Type.String({ description: "Search keyword." }), { description: "Keywords to add as part of this same node update event." })),
       glossary_remove: Type.Optional(Type.Array(Type.String({ description: "Search keyword." }), { description: "Keywords to remove as part of this same node update event." })),
     }),
@@ -260,7 +250,6 @@ export function registerTools(api: any, pluginCfg: any) {
       if (typeof params?.content === "string") body.content = params.content;
       if (Number.isFinite(params?.priority)) body.priority = params.priority;
       if (typeof params?.disclosure === "string") body.disclosure = params.disclosure;
-      if (typeof params?.session_id === "string" && params.session_id.trim()) body.session_id = params.session_id.trim();
       if (glossaryAdd.length > 0) body.glossary_add = glossaryAdd;
       if (glossaryRemove.length > 0) body.glossary_remove = glossaryRemove;
       let domain = pluginCfg.defaultDomain;
@@ -286,7 +275,6 @@ export function registerTools(api: any, pluginCfg: any) {
     description: "Remove a memory path that is obsolete, duplicated, or no longer wanted.",
     parameters: Type.Object({
       uri: UriParam,
-      session_id: Type.Optional(Type.String({ description: "Session ID for policy validation (read-before-delete check)." })),
     }),
     async execute(_id: any, params: any) {
       let domain = pluginCfg.defaultDomain;
@@ -294,9 +282,6 @@ export function registerTools(api: any, pluginCfg: any) {
       try {
         ({ domain, path } = resolveMemoryLocator(params, { defaultDomain: pluginCfg.defaultDomain, pathKey: "__unused_path", allowEmptyPath: false, label: "uri" }));
         const qs = new URLSearchParams({ domain, path });
-        if (typeof params?.session_id === "string" && params.session_id.trim()) {
-          qs.set("session_id", params.session_id.trim());
-        }
         const data = await fetchJson(pluginCfg, `/browse/node?${qs.toString()}`, { method: "DELETE" });
         const deletedUri = String(data?.deleted_uri || data?.uri || `${domain}://${path}`).trim();
         const canonicalUri = String(data?.uri || deletedUri).trim();
@@ -332,44 +317,4 @@ export function registerTools(api: any, pluginCfg: any) {
     },
   });
 
-  api.registerTool({
-    name: "lore_list_session_reads",
-    label: "Lore list session reads",
-    description: "Show which memory nodes have already been opened in this session.",
-    parameters: Type.Object({
-      session_id: Type.String({ description: "Session identifier to query." }),
-    }),
-    async execute(_id: any, params: any) {
-      const sessionId = String(params?.session_id || "").trim();
-      try {
-        const qs = new URLSearchParams({ session_id: sessionId });
-        const data = await fetchJson(pluginCfg, `/browse/session/read?${qs.toString()}`, { method: "GET" });
-        const text = Array.isArray(data) && data.length > 0
-          ? data.map((item: any) => `- ${item.uri} (${item.read_count})`).join("\n")
-          : "No read nodes tracked for this session.";
-        return textResult(text, { ok: true, reads: data });
-      } catch (error: any) {
-        return textResult(`Lore session reads failed: ${error.message}`, { ok: false, error: error.message });
-      }
-    },
-  });
-
-  api.registerTool({
-    name: "lore_clear_session_reads",
-    label: "Lore clear session reads",
-    description: "Reset per-session memory read tracking.",
-    parameters: Type.Object({
-      session_id: Type.String({ description: "Session identifier to clear." }),
-    }),
-    async execute(_id: any, params: any) {
-      const sessionId = String(params?.session_id || "").trim();
-      try {
-        const qs = new URLSearchParams({ session_id: sessionId });
-        const data = await fetchJson(pluginCfg, `/browse/session/read?${qs.toString()}`, { method: "DELETE" });
-        return textResult(`Cleared Lore read tracking for ${sessionId}`, { ok: true, result: data });
-      } catch (error: any) {
-        return textResult(`Lore clear session reads failed: ${error.message}`, { ok: false, error: error.message });
-      }
-    },
-  });
 }

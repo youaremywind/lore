@@ -27,8 +27,8 @@ vi.mock('@/lib/i18n', () => ({
 import { FieldRow, type FieldSchema } from '../SettingsSectionEditor';
 
 const enumSchema: FieldSchema = {
-  key: 'recall.display.read_node_display_mode',
-  label: 'Read mode',
+  key: 'recall.display.mode',
+  label: 'Display mode',
   type: 'enum',
   options: ['soft', 'hard'],
   option_labels: { soft: 'Soft', hard: 'Hard' },
@@ -64,12 +64,6 @@ const booleanSchema: FieldSchema = {
   section: 'recall',
 };
 
-const readBeforeModifySchema: FieldSchema = {
-  key: 'policy.read_before_modify_enabled',
-  label: '改前必读检查',
-  type: 'boolean',
-  section: 'policy',
-};
 
 describe('SettingsSectionEditor fields', () => {
   it('renders enum fields through AppSelect instead of native select', () => {
@@ -127,24 +121,6 @@ describe('SettingsSectionEditor fields', () => {
     expect(html).toContain('aria-checked="true"');
   });
 
-  it('renders read-before-modify as a high-contrast green selected switch', () => {
-    const html = renderToStaticMarkup(
-      <FieldRow
-        schema={readBeforeModifySchema}
-        value
-        source="default"
-        dirty={false}
-        secretConfigured={false}
-        onChange={() => undefined}
-        onReset={() => undefined}
-        saving={false}
-      />,
-    );
-
-    expect(html).toContain('改前必读检查');
-    expect(html).toContain('data-toggle-switch="true"');
-    expect(html).toContain('aria-checked="true"');
-  });
 
   it('renders text and secret fields through Lobe input wrappers', () => {
     const textHtml = renderToStaticMarkup(

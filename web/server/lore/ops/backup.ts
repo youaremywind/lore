@@ -25,7 +25,7 @@ const OPTIONAL_TABLES: Array<{ name: string; query: string }> = [
 ];
 
 // Regenerable / ephemeral tables to truncate on restore but not backup
-const TRUNCATE_ONLY = ['memory_views', 'recall_documents', 'search_documents', 'session_read_nodes', 'schema_migrations'];
+const TRUNCATE_ONLY = ['memory_views', 'recall_documents', 'search_documents', 'schema_migrations'];
 
 // Tables with BIGSERIAL/SERIAL id columns that need sequence reset after restore
 const SERIAL_TABLES = ['memories', 'edges', 'glossary_keywords', 'memory_events', 'dream_diary', 'dream_workflow_events', 'glossary_term_embeddings'];

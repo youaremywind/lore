@@ -1,5 +1,4 @@
 import { getNodePayload } from '../memory/browse';
-import { markSessionRead } from '../memory/session';
 import { parseUri } from '../core/utils';
 import { listMemoryViewsByNode } from '../view/memoryViewQueries';
 import { getNodeWriteHistory } from '../memory/writeEvents';
@@ -8,11 +7,6 @@ import { getProtectedBootOperation } from './dreamToolBootGuard';
 interface DreamReadEventContext {
   source: string;
   session_id?: string | null;
-}
-
-interface DreamReadableNode {
-  uri?: unknown;
-  node_uuid?: unknown;
 }
 
 interface DreamTreeNode {
@@ -85,28 +79,6 @@ async function toTreeLeaf(child: Record<string, unknown>): Promise<DreamTreeNode
   };
 }
 
-async function trackDreamRead(
-  node: DreamReadableNode | null | undefined,
-  eventContext: DreamReadEventContext,
-  sourceSuffix: string,
-): Promise<void> {
-  const sessionId = eventContext.session_id ?? null;
-  const uri = typeof node?.uri === 'string' ? node.uri : '';
-  const nodeUuid = typeof node?.node_uuid === 'string' ? node.node_uuid : '';
-  if (!sessionId || !uri || !nodeUuid) return;
-
-  try {
-    await markSessionRead({
-      session_id: sessionId,
-      uri,
-      node_uuid: nodeUuid,
-      source: `${eventContext.source}:${sourceSuffix}`,
-    });
-  } catch {
-    // best effort only
-  }
-}
-
 export async function inspectTree(
   uri: string,
   {
@@ -116,7 +88,7 @@ export async function inspectTree(
     depth?: number;
     maxNodes?: number;
   } = {},
-  eventContext: DreamReadEventContext = { source: 'dream:auto' },
+  _eventContext: DreamReadEventContext = { source: 'dream:auto' },
 ): Promise<DreamTreeInspection> {
   const safeDepth = clampInteger(depth, 1, 4, 2);
   const safeMaxNodes = clampInteger(maxNodes, 1, 120, 60);
@@ -128,7 +100,6 @@ export async function inspectTree(
   async function loadNode(currentUri: string, level: number): Promise<DreamTreeNode> {
     const parsed = parseUri(currentUri);
     const payload = await getNodePayload({ domain: parsed.domain, path: parsed.path });
-    await trackDreamRead(payload.node, eventContext, 'inspect_tree');
     visitedNodes += 1;
 
     const nodeUri = String(payload.node?.uri || currentUri);
@@ -178,11 +149,10 @@ export async function inspectTree(
 
 export async function inspectNeighbors(
   uri: string,
-  eventContext: DreamReadEventContext = { source: 'dream:auto' },
+  _eventContext: DreamReadEventContext = { source: 'dream:auto' },
 ): Promise<Record<string, unknown>> {
   const { domain, path: currentPath } = parseUri(uri);
   const current = await getNodePayload({ domain, path: currentPath });
-  await trackDreamRead(current.node, eventContext, 'inspect_neighbors');
   const aliases = Array.isArray(current.node?.aliases) ? current.node.aliases : [];
   const breadcrumbs = Array.isArray(current.breadcrumbs) ? current.breadcrumbs : [];
   const children = Array.isArray(current.children) ? current.children : [];
@@ -194,7 +164,6 @@ export async function inspectNeighbors(
 
   const parentPath = segments.slice(0, -1).join('/');
   const parent = await getNodePayload({ domain, path: parentPath });
-  await trackDreamRead(parent.node, eventContext, 'inspect_neighbors');
   const siblings = (Array.isArray(parent.children) ? parent.children : []).filter((child) => child.uri !== uri);
 
   return {
@@ -246,7 +215,7 @@ export async function inspectMemoryNodeForDream(
     viewsLimit?: number;
     historyLimit?: number;
   } = {},
-  eventContext: DreamReadEventContext = { source: 'dream:auto' },
+  _eventContext: DreamReadEventContext = { source: 'dream:auto' },
 ): Promise<Record<string, unknown>> {
   const safeSiblingsLimit = clampInteger(siblingsLimit, 0, 20, 8);
   const safeChildrenLimit = clampInteger(childrenLimit, 0, 30, 12);
@@ -254,7 +223,6 @@ export async function inspectMemoryNodeForDream(
   const safeHistoryLimit = clampInteger(historyLimit, 1, 10, 8);
   const { domain, path } = parseUri(uri);
   const current = await getNodePayload({ domain, path });
-  await trackDreamRead(current.node, eventContext, 'inspect_memory_node_for_dream');
   const node = current.node as unknown as Record<string, unknown>;
   const segments = path.split('/').filter(Boolean);
   const parentPath = segments.slice(0, -1).join('/');
@@ -263,7 +231,6 @@ export async function inspectMemoryNodeForDream(
     listMemoryViewsByNode({ uri: String(node.uri || `${domain}://${path}`), nodeUuid: String(node.node_uuid || ''), limit: safeViewsLimit }),
     getNodeWriteHistory({ nodeUri: String(node.uri || `${domain}://${path}`), limit: safeHistoryLimit }),
   ]);
-  if (parentPayload) await trackDreamRead(parentPayload.node, eventContext, 'inspect_memory_node_for_dream_parent');
   const siblings = parentPayload
     ? (Array.isArray(parentPayload.children) ? parentPayload.children : [])
         .flatMap((child) => (

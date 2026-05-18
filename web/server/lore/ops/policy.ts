@@ -27,13 +27,11 @@ export interface UpdatePolicyOptions {
   path?: string;
   priority?: number | string | null;
   disclosure?: string | null;
-  sessionId?: string | null;
 }
 
 export interface DeletePolicyOptions {
   domain?: string;
   path?: string;
-  sessionId?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,18 +48,6 @@ async function getPriorityBudget(): Promise<Record<number, number>> {
     counts[r.priority] = r.cnt;
   }
   return counts;
-}
-
-async function getRecentRead(sessionId: string | null | undefined, uri: string | null | undefined, windowMinutes: number): Promise<boolean> {
-  if (!sessionId || !uri) return false;
-  const result = await sql(
-    `SELECT 1 FROM session_read_nodes
-     WHERE session_id = $1 AND uri = $2
-       AND last_read_at >= NOW() - make_interval(mins => $3)
-     LIMIT 1`,
-    [sessionId, uri, windowMinutes],
-  );
-  return result.rows.length > 0;
 }
 
 async function getCurrentPriority(domain: string | undefined, path: string | undefined): Promise<number | null> {
@@ -110,19 +96,9 @@ export async function validateCreatePolicy({ priority, disclosure }: CreatePolic
   return { errors, warnings };
 }
 
-export async function validateUpdatePolicy({ domain, path, priority, disclosure, sessionId }: UpdatePolicyOptions = {}): Promise<PolicyResult> {
+export async function validateUpdatePolicy({ domain, path, priority, disclosure }: UpdatePolicyOptions = {}): Promise<PolicyResult> {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const uri = `${domain}://${path}`;
-
-  // Read-before-modify
-  if (await getSetting('policy.read_before_modify_enabled')) {
-    const windowMinutes = Number(await getSetting('policy.read_before_modify_window_minutes')) || 10;
-    const hasRead = await getRecentRead(sessionId, uri, windowMinutes);
-    if (!hasRead) {
-      warnings.push(`节点 ${uri} 在本次会话中未被读取过。建议先用 lore_get_node 查看内容再修改。`);
-    }
-  }
 
   // Priority budget (only when changing priority to 0 or 1)
   if (priority !== undefined && (await getSetting('policy.priority_budget_enabled'))) {
@@ -150,19 +126,9 @@ export async function validateUpdatePolicy({ domain, path, priority, disclosure,
   return { errors, warnings };
 }
 
-export async function validateDeletePolicy({ domain, path, sessionId }: DeletePolicyOptions = {}): Promise<PolicyResult> {
+export async function validateDeletePolicy(_options: DeletePolicyOptions = {}): Promise<PolicyResult> {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const uri = `${domain}://${path}`;
-
-  // Read-before-modify
-  if (await getSetting('policy.read_before_modify_enabled')) {
-    const windowMinutes = Number(await getSetting('policy.read_before_modify_window_minutes')) || 10;
-    const hasRead = await getRecentRead(sessionId, uri, windowMinutes);
-    if (!hasRead) {
-      warnings.push(`节点 ${uri} 在本次会话中未被读取过。建议先用 lore_get_node 查看内容再删除。`);
-    }
-  }
 
   return { errors, warnings };
 }

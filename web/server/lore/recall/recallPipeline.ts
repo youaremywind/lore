@@ -24,7 +24,6 @@ import {
   type ScoredResult,
   type ScoringConfig,
 } from './recallScoring';
-import { getSessionReadUris } from './recallSessionReads';
 
 export interface RecallPipelineResult {
   query: string;
@@ -41,7 +40,6 @@ export interface RecallPipelineResult {
   items: RecallDisplayItem[];
   suppressed: RecallSuppressed;
   boot_uris: string[];
-  read_node_display_mode: string;
   retrieval_meta: {
     exact_candidates: number;
     glossary_semantic_candidates: number;
@@ -69,7 +67,6 @@ export interface RecallRequestBody {
   min_display_score?: number;
   min_score?: number;
   score_precision?: number;
-  read_node_display_mode?: string;
   exclude_boot_from_results?: boolean;
   log_events?: boolean;
   client_type?: string | null;
@@ -136,11 +133,9 @@ export async function runRecallPipeline(
     }),
   ]);
 
-  const readUris = await getSessionReadUris(body.session_id);
   const bootUris = body.exclude_boot_from_results === false ? new Set<string>() : getBootUriSet();
   const scorePrecision = body.score_precision || 2;
   const minDisplayScore = Number(body.min_display_score ?? displayConfig.min_display_score);
-  const readNodeDisplayMode = (body.read_node_display_mode || displayConfig.read_node_display_mode) as string;
   const { ranked, candidates, items, suppressed } = buildRecallDisplay({
     ranked: aggregateCandidates({
       exactRows: exactRows as unknown as Record<string, unknown>[],
@@ -149,14 +144,12 @@ export async function runRecallPipeline(
       lexicalRows: lexicalRows as unknown as Record<string, unknown>[],
       scoringConfig,
     }),
-    readUris,
     bootUris,
     scorePrecision,
     minScore: Number(body.min_score || 0),
     candidateCount: Math.max(body.limit || 12, maxDisplayItems),
     maxDisplayItems,
     minDisplayScore,
-    readNodeDisplayMode,
   });
 
   return {
@@ -174,7 +167,6 @@ export async function runRecallPipeline(
     items,
     suppressed,
     boot_uris: Array.from(bootUris).toSorted(),
-    read_node_display_mode: readNodeDisplayMode,
     retrieval_meta: {
       exact_candidates: exactRows.length,
       glossary_semantic_candidates: glossarySemanticRows.length,

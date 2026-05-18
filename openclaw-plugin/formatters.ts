@@ -109,7 +109,7 @@ export function formatRecallBlock(items: any, precision = DEFAULT_RECALL_SCORE_P
   for (const item of items) {
     const score = Number.isFinite(item?.score_display) ? Number(item.score_display).toFixed(precision) : String(item?.score ?? "");
     const cues = readCueList(item);
-    const cueText = `${item?.read ? "read · " : ""}${cues.join(" · ")}`.trim();
+    const cueText = cues.join(" · ").trim();
     lines.push(`${score} | ${item?.uri || ""}${cueText ? ` | ${cueText}` : ""}`);
   }
   lines.push("</recall>");

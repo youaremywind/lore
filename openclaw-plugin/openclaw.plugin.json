@@ -16,9 +16,7 @@
       "lore_create_node",
       "lore_update_node",
       "lore_delete_node",
-      "lore_move_node",
-      "lore_list_session_reads",
-      "lore_clear_session_reads"
+      "lore_move_node"
     ]
   },
   "configSchema": {
@@ -64,13 +62,6 @@
         "minimum": 0,
         "maximum": 4
       },
-      "readNodeDisplayMode": {
-        "type": "string",
-        "enum": [
-          "soft",
-          "hard"
-        ]
-      },
       "excludeBootFromResults": {
         "type": "boolean"
       }
@@ -109,9 +100,6 @@
     },
     "scorePrecision": {
       "label": "Recall Score Precision"
-    },
-    "readNodeDisplayMode": {
-      "label": "Read Node Display Mode"
     },
     "excludeBootFromResults": {
       "label": "Exclude Boot Nodes From Recall Results"

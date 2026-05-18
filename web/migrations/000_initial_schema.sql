@@ -73,18 +73,6 @@ CREATE TABLE IF NOT EXISTS glossary_keywords (
 );
 CREATE INDEX IF NOT EXISTS glossary_keywords_node_uuid_idx ON glossary_keywords(node_uuid);
 
-CREATE TABLE IF NOT EXISTS session_read_nodes (
-  session_id    TEXT NOT NULL,
-  uri           TEXT NOT NULL,
-  node_uuid     TEXT NOT NULL,
-  session_key   TEXT,
-  source        TEXT NOT NULL DEFAULT 'tool:get_node',
-  read_count    INTEGER NOT NULL DEFAULT 1,
-  first_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  last_read_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (session_id, uri)
-);
-
 -- =========================================================================
 -- Operational tables
 -- =========================================================================

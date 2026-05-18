@@ -44,8 +44,6 @@ describe('Pi extension tools', () => {
       'lore_update_node',
       'lore_delete_node',
       'lore_move_node',
-      'lore_list_session_reads',
-      'lore_clear_session_reads',
     ]);
     expect(pi.tools.lore_search.promptSnippet).toContain('Search Lore');
     expect(pi.tools.lore_get_node.promptGuidelines.join('\n')).toContain('lore_get_node');
@@ -64,6 +62,37 @@ describe('Pi extension tools', () => {
     expect(props.query_id).toBeDefined();
     expect(props.__session_id).toBeUndefined();
     expect(props.__session_key).toBeUndefined();
+  });
+
+
+
+  it('lore_get_node records recall usage without session read tracking', async () => {
+    const pi = makeMockPi();
+    registerTools(pi as any, makePluginCfg());
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => JSON.stringify({ node: { uri: 'core://agent', node_uuid: 'node-1', content: 'Agent' }, children: [] }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => JSON.stringify({ ok: true }),
+      }));
+
+    const result = await pi.tools.lore_get_node.execute('tool-1', {
+      uri: 'core://agent',
+      session_id: 'sess-1',
+      query_id: 'query-1',
+    }, undefined, undefined, {});
+
+    const urls = (fetch as any).mock.calls.map((call: any[]) => String(call[0]));
+    expect(result.details.ok).toBe(true);
+    expect(urls.some((url: string) => url.includes('/browse/recall/usage'))).toBe(true);
+    expect(urls.some((url: string) => url.includes('/browse/session/read'))).toBe(false);
   });
 
   it('status tool calls Lore with client_type=pi', async () => {
