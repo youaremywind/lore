@@ -52,7 +52,7 @@ export async function fetchJson(pluginCfg: any, path: string, options: any = {})
       ...authHeaders(pluginCfg, options.method && options.method !== "GET"),
       ...(options.headers || {}),
     },
-    signal: AbortSignal.timeout(pluginCfg.timeoutMs),
+    signal: AbortSignal.timeout(pluginCfg.timeoutMs || DEFAULT_TIMEOUT_MS),
   });
 
   const text = await response.text();

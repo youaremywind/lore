@@ -1,17 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_GUIDANCE,
-  clearSessionReads,
   extractMessageText,
-  fetchRecallBlock,
   loadPromptGuidance,
-  pendingRecallUsage,
   registerHooks,
-  setPendingRecallUsage,
 } from '../hooks';
 
 beforeEach(() => {
-  pendingRecallUsage.clear();
   vi.unstubAllGlobals();
 });
 
@@ -31,29 +26,6 @@ describe('Pi extension hooks', () => {
     expect(extractMessageText({ content: [{ type: 'text', text: 'hello' }, { type: 'image' }, { type: 'text', text: 'world' }] })).toBe('hello\nworld');
   });
 
-  it('stores pending recall usage by session', () => {
-    setPendingRecallUsage('sess-1', { queryId: 'q1', nodeUris: [{ uri: 'core://a' }] });
-    expect(pendingRecallUsage.get('sess-1')?.queryId).toBe('q1');
-    expect(pendingRecallUsage.get('sess-1')?.nodeUris).toEqual(['core://a']);
-  });
-
-  it('fetches recall blocks with Pi client type', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      text: async () => JSON.stringify({
-        event_log: { query_id: 'qid-1' },
-        items: [{ uri: 'core://agent/pi', score: 0.8, matched_on: ['dense'] }],
-      }),
-    }));
-
-    const result = await fetchRecallBlock({ baseUrl: 'http://host', timeoutMs: 1000, recallEnabled: true }, 'question', 'sess-1');
-    expect(result?.block).toContain('<recall');
-    expect(result?.block).toContain('core://agent/pi');
-    expect((fetch as any).mock.calls[0][0]).toBe('http://host/api/browse/recall?client_type=pi');
-  });
-
   it('registers Pi lifecycle hooks', () => {
     const pi = makeMockPi();
     registerHooks(pi as any, { injectPromptGuidance: false, recallEnabled: false, startupHealthcheck: false }, '');
@@ -66,23 +38,16 @@ describe('Pi extension hooks', () => {
   it('before_agent_start injects guidance and recall as a message', async () => {
     const pi = makeMockPi();
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: any) => {
-      const body = init?.body ? JSON.parse(String(init.body)) : {};
-      if (String(url).includes('/browse/boot')) {
+      if (String(url).includes('/bridge/startup')) {
         return {
           ok: true, status: 200, statusText: 'OK',
-          text: async () => JSON.stringify({
-            core_memories: [{ uri: 'core://agent/pi', content: 'Pi runtime rules', priority: 1 }],
-            recent_memories: [],
-          }),
+          text: async () => JSON.stringify({ system_context: 'BRIDGE SYSTEM' }),
         };
       }
-      if (String(url).includes('/browse/recall') && body?.query === 'what now?') {
+      if (String(url).includes('/bridge/recall')) {
         return {
           ok: true, status: 200, statusText: 'OK',
-          text: async () => JSON.stringify({
-            event_log: { query_id: 'qid-2' },
-            items: [{ uri: 'core://project', score: 0.7, matched_on: ['lexical'] }],
-          }),
+          text: async () => JSON.stringify({ context: '<recall session_id="sess-2" query_id="qid-2">\n0.70 | core://project\n</recall>', has_recall: true }),
         };
       }
       return {
@@ -100,13 +65,16 @@ describe('Pi extension hooks', () => {
     }, 'static guidance');
 
     const result = await pi.events.before_agent_start({ prompt: 'what now?', systemPrompt: 'base system' }, { sessionManager: { sessionId: 'sess-2' } });
-    expect(result.systemPrompt).toContain('static guidance');
-    expect(result.systemPrompt).toContain('Pi runtime rules');
+    expect(result.systemPrompt).toContain('BRIDGE SYSTEM');
     expect(result.message.content).toContain('<recall');
     expect(result.message.content).toContain('core://project');
+    const urls = (fetch as any).mock.calls.map((call: any[]) => String(call[0]));
+    expect(urls.some((url: string) => url.includes('/browse/boot'))).toBe(false);
+    expect(urls.some((url: string) => url.includes('/browse/recall'))).toBe(false);
   });
 
-  it('clears session reads through Lore API', async () => {
+  it('session_shutdown clears through bridge session end', async () => {
+    const pi = makeMockPi();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -114,8 +82,10 @@ describe('Pi extension hooks', () => {
       text: async () => '{}',
     }));
 
-    await clearSessionReads({ baseUrl: 'http://host', timeoutMs: 1000 }, 'sess-clear');
-    expect((fetch as any).mock.calls[0][0]).toContain('/api/browse/session/read?session_id=sess-clear&client_type=pi');
+    registerHooks(pi as any, { baseUrl: 'http://host', timeoutMs: 1000, injectPromptGuidance: false, recallEnabled: false, startupHealthcheck: false }, '');
+    await pi.events.session_shutdown({}, { sessionManager: { sessionId: 'sess-clear' } });
+    expect((fetch as any).mock.calls[0][0]).toContain('/api/bridge/session/end?client_type=pi');
+    expect(JSON.parse((fetch as any).mock.calls[0][1].body)).toMatchObject({ session_id: 'sess-clear' });
   });
 
   it('loads prompt guidance text', () => {
