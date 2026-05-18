@@ -99,6 +99,27 @@ describe('searchMemories', () => {
     expect(result.results[2].content).toBeNull();
   });
 
+  it('does not require Iterator.prototype.toArray from newer Node runtimes', async () => {
+    const iteratorPrototype = Object.getPrototypeOf(Object.getPrototypeOf(new Map().values()));
+    const descriptor = Object.getOwnPropertyDescriptor(iteratorPrototype, 'toArray');
+    if (descriptor) Reflect.deleteProperty(iteratorPrototype, 'toArray');
+    try {
+      mockRunStrategy.mockReturnValue([
+        { uri: 'core://node20', score: 0.9, priority: 0, disclosure: '', cues: [], view_types: [], timestamps: [] },
+      ]);
+      mockSql.mockResolvedValue({
+        rows: [{ uri: 'core://node20', latest_content: 'content' }],
+        rowCount: 1,
+      } as any);
+
+      const result = await searchMemories({ query: 'test', limit: 10, content_limit: 1 });
+
+      expect(result.results[0].uri).toBe('core://node20');
+    } finally {
+      if (descriptor) Object.defineProperty(iteratorPrototype, 'toArray', descriptor);
+    }
+  });
+
   it('includes meta with candidate counts', async () => {
     const result = await searchMemories({ query: 'test' });
     expect(result.meta.query).toBe('test');

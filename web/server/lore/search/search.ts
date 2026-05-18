@@ -235,9 +235,8 @@ export async function searchMemories({
   }
 
   // 5. Re-sort and slice
-  const merged = scoredMap.values()
-    .toArray()
-    .toSorted((a, b) => b.score - a.score || a.priority - b.priority || a.uri.localeCompare(b.uri))
+  const merged = Array.from(scoredMap.values())
+    .sort((a, b) => b.score - a.score || a.priority - b.priority || a.uri.localeCompare(b.uri))
     .slice(0, safeLimit);
 
   // 6. Fetch content for top N
