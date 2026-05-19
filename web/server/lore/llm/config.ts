@@ -83,12 +83,18 @@ function createAnthropicFetchPatch(config: ResolvedViewLlmConfig): typeof global
     if (!contentType.includes('application/json')) return response;
 
     const text = await response.text();
-    let data: unknown;
-    try { data = JSON.parse(text); } catch { return response; }
+    const rebuildResponse = (body: string): Response => new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
 
-    if (data == null || typeof data !== 'object') return response;
+    let data: unknown;
+    try { data = JSON.parse(text); } catch { return rebuildResponse(text); }
+
+    if (data == null || typeof data !== 'object') return rebuildResponse(text);
     const obj = data as Record<string, unknown>;
-    if (!Array.isArray(obj.content)) return response;
+    if (!Array.isArray(obj.content)) return rebuildResponse(text);
 
     let modified = false;
     for (const block of obj.content) {
@@ -97,13 +103,7 @@ function createAnthropicFetchPatch(config: ResolvedViewLlmConfig): typeof global
         modified = true;
       }
     }
-    if (!modified) return response;
-
-    return new Response(JSON.stringify(obj), {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
+    return rebuildResponse(modified ? JSON.stringify(obj) : text);
   };
 }
 
