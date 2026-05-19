@@ -112,7 +112,7 @@ export default function SettingsPage(): React.JSX.Element {
   return (
     <PageCanvas maxWidth="5xl">
       {dirtyKeys.length > 0 && (
-        <div className="sticky top-0 z-30 flex justify-end mb-4">
+        <div className="fixed bottom-6 right-6 z-30">
           <div className="flex items-center gap-2 rounded-full bg-surface-primary/95 px-3 py-1.5 shadow backdrop-blur-sm">
             <span className="text-xs text-txt-tertiary tabular-nums">
               {dirtyKeys.length === 1 ? t('1 unsaved change') : `${dirtyKeys.length} ${t('unsaved changes')}`}
