@@ -1,69 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  setPendingRecallUsage,
-  consumePendingRecallUsage,
   extractMessageText,
   extractAssistantText,
   DEFAULT_GUIDANCE,
   loadPromptGuidance,
   registerHooks,
-  pendingRecallUsage,
 } from '../hooks';
 
 beforeEach(() => {
-  pendingRecallUsage.clear();
-});
-
-describe('setPendingRecallUsage / consumePendingRecallUsage', () => {
-  it('stores and retrieves a pending recall entry', () => {
-    setPendingRecallUsage('sess-1', {
-      queryId: 'q1',
-      nodeUris: [{ uri: 'core://a' }, { uri: 'core://b' }],
-    });
-    const result = consumePendingRecallUsage('sess-1');
-    expect(result).not.toBeNull();
-    expect(result?.queryId).toBe('q1');
-    expect(result?.nodeUris).toEqual(['core://a', 'core://b']);
-  });
-
-  it('consume removes the entry', () => {
-    setPendingRecallUsage('sess-2', { queryId: 'q2', nodeUris: ['core://x'] });
-    consumePendingRecallUsage('sess-2');
-    expect(consumePendingRecallUsage('sess-2')).toBeNull();
-  });
-
-  it('returns null for unknown session', () => {
-    expect(consumePendingRecallUsage('unknown')).toBeNull();
-  });
-
-  it('returns null when sessionId is falsy', () => {
-    expect(consumePendingRecallUsage(undefined)).toBeNull();
-  });
-
-  it('does nothing when sessionId is falsy', () => {
-    setPendingRecallUsage(undefined, { queryId: 'q', nodeUris: ['a'] });
-    expect(pendingRecallUsage.size).toBe(0);
-  });
-
-  it('deletes entry when queryId is empty', () => {
-    setPendingRecallUsage('sess-3', { queryId: 'q3', nodeUris: ['core://a'] });
-    setPendingRecallUsage('sess-3', { queryId: '', nodeUris: ['core://a'] });
-    expect(consumePendingRecallUsage('sess-3')).toBeNull();
-  });
-
-  it('deletes entry when nodeUris is empty', () => {
-    setPendingRecallUsage('sess-4', { queryId: 'q4', nodeUris: ['core://a'] });
-    setPendingRecallUsage('sess-4', { queryId: 'q4', nodeUris: [] });
-    expect(consumePendingRecallUsage('sess-4')).toBeNull();
-  });
-
-  it('evicts stale entries (>30 min old)', () => {
-    const staleTime = Date.now() - 31 * 60 * 1000;
-    pendingRecallUsage.set('sess-stale', { queryId: 'old', nodeUris: [], createdAt: staleTime });
-    // Setting a new entry triggers cleanup
-    setPendingRecallUsage('sess-new', { queryId: 'new', nodeUris: ['core://z'] });
-    expect(pendingRecallUsage.has('sess-stale')).toBe(false);
-  });
+  vi.unstubAllGlobals();
 });
 
 describe('extractMessageText', () => {
@@ -166,45 +111,31 @@ describe('registerHooks', () => {
     registerHooks(api as any, { startupHealthcheck: false, injectPromptGuidance: false, recallEnabled: false }, '');
     expect('lore.status' in api.gatewayMethods).toBe(true);
     expect('gateway_start' in api.events).toBe(true);
-    expect('before_tool_call' in api.events).toBe(true);
-    expect('session_end' in api.events).toBe(true);
+    expect('before_tool_call' in api.events).toBe(false);
+    expect('session_end' in api.events).toBe(false);
     expect('before_prompt_build' in api.events).toBe(true);
   });
 
-  it('before_tool_call hook skips non-get_node tools', async () => {
-    const api = makeMockApi();
-    registerHooks(api as any, { startupHealthcheck: false, injectPromptGuidance: false, recallEnabled: false }, '');
-    const hook = api.events.before_tool_call;
-    const result = await hook.handler({ toolName: 'other_tool', context: { sessionId: 'abc' } });
-    expect(result).toBeUndefined();
-  });
 
-  it('before_tool_call hook injects session id for lore_get_node', async () => {
+  it('before_prompt_build injects bridge startup context and prompt recall', async () => {
     const api = makeMockApi();
-    registerHooks(api as any, { startupHealthcheck: false, injectPromptGuidance: false, recallEnabled: false }, '');
-    const hook = api.events.before_tool_call;
-    const result = await hook.handler({
-      toolName: 'lore_get_node',
-      params: { uri: 'core://test' },
-      context: { sessionId: 'sess-xyz', sessionKey: 'key-abc' },
-    });
-    expect(result?.params?.__session_id).toBe('sess-xyz');
-    expect(result?.params?.__session_key).toBe('key-abc');
-    expect(result?.params?.uri).toBe('core://test');
-  });
-
-  it('session_end hook clears pending recall for session', async () => {
-    const api = makeMockApi();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: async () => '{}',
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).includes('/bridge/startup')) {
+        return { ok: true, status: 200, text: async () => JSON.stringify({ system_context: 'BRIDGE SYSTEM' }) };
+      }
+      if (String(url).includes('/bridge/recall')) {
+        return { ok: true, status: 200, text: async () => JSON.stringify({ context: '<recall session_id="sess-1" query_id="q1">\n0.70 | core://project\n</recall>', has_recall: true }) };
+      }
+      return { ok: true, status: 200, text: async () => '{}' };
     }));
-    setPendingRecallUsage('sess-end', { queryId: 'q', nodeUris: ['core://a'] });
-    registerHooks(api as any, { startupHealthcheck: false, injectPromptGuidance: false, recallEnabled: false, baseUrl: 'http://localhost' }, '');
-    const hook = api.events.session_end;
-    await hook.handler({ sessionId: 'sess-end' });
-    expect(pendingRecallUsage.has('sess-end')).toBe(false);
-    vi.unstubAllGlobals();
+
+    registerHooks(api as any, { startupHealthcheck: false, injectPromptGuidance: true, recallEnabled: true, baseUrl: 'http://localhost' }, 'GUIDANCE');
+    const result = await api.events.before_prompt_build.handler({ prompt: 'what now?', context: { sessionId: 'sess-1' } });
+
+    expect(result.appendSystemContext).toBe('BRIDGE SYSTEM');
+    expect(result.prependContext).toContain('core://project');
+    const urls = (fetch as any).mock.calls.map((call: any[]) => String(call[0]));
+    expect(urls.some((url: string) => url.includes('/browse/boot'))).toBe(false);
+    expect(urls.some((url: string) => url.includes('/browse/recall'))).toBe(false);
   });
 });

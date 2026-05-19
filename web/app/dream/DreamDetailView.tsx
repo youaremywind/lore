@@ -31,7 +31,6 @@ function fmtDate(iso: string | null | undefined): string {
 
 type BadgeStatusTone = 'green' | 'red' | 'soft' | 'blue';
 type ChangeTone = 'green' | 'red' | 'orange' | 'blue';
-type BadgeTone = 'green' | 'red' | 'orange' | 'blue' | 'default' | 'soft';
 
 interface DreamAuditChange {
   uri?: string;
@@ -68,6 +67,23 @@ function changeTone(type: string): ChangeTone {
   if (type === 'update') return 'orange';
   if (type === 'move') return 'blue';
   return 'blue';
+}
+
+function reviewStatusLabel(status: MemoryChange['review_status']): string {
+  if (status === 'approved') return 'Approved';
+  if (status === 'dismissed') return 'Dismissed';
+  return 'Pending review';
+}
+
+function reviewStatusTone(status: MemoryChange['review_status']): 'green' | 'orange' | 'soft' {
+  if (status === 'approved') return 'green';
+  if (status === 'dismissed') return 'soft';
+  return 'orange';
+}
+
+function editableUriForChange(change: MemoryChange): string {
+  if (change.type === 'delete') return '';
+  return change.after?.uri || change.uri || '';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -128,11 +144,39 @@ function parseDreamAudit(rawNarrative: string): DreamAudit | null {
   };
 }
 
-function resultTone(result: string | undefined): BadgeTone {
-  if (result === 'success' || result === 'applied') return 'green';
-  if (result === 'skipped') return 'soft';
-  if (result === 'blocked' || result === 'failed' || result === 'error') return 'red';
-  return 'blue';
+
+export function formatOriginalDreamNarrativeForView(rawNarrative: string, t: (key: string) => string): string {
+  const audit = parseDreamAudit(rawNarrative);
+  if (!audit) return rawNarrative;
+
+  const lines: string[] = [];
+  if (audit.primary_focus) lines.push(`${t('Primary focus')}: ${audit.primary_focus}`);
+
+  const changedNodes = audit.changed_nodes || [];
+  if (changedNodes.length > 0) {
+    lines.push(`${t('Changed nodes')}: ${changedNodes.length}`);
+    for (const node of changedNodes) {
+      const header = [node.action, node.result].filter(Boolean).join(' · ');
+      const details = [header, node.uri].filter(Boolean).join(' — ');
+      if (details) lines.push(`- ${details}`);
+      for (const change of node.changes || []) lines.push(`  - ${change}`);
+    }
+  }
+
+  const evidence = audit.evidence || [];
+  if (evidence.length > 0) {
+    lines.push(`${t('Evidence')}: ${evidence.length}`);
+    for (const item of evidence) {
+      const details = [item.query_id, item.reason].filter(Boolean).join(' — ');
+      if (details) lines.push(`- ${details}`);
+    }
+  }
+
+  if (audit.why_not_more_changes) lines.push(`${t('Why not more changes')}: ${audit.why_not_more_changes}`);
+  if (audit.expected_effect) lines.push(`${t('Expected effect')}: ${audit.expected_effect}`);
+  if (audit.confidence) lines.push(`${t('Confidence')}: ${audit.confidence}`);
+
+  return lines.join('\n');
 }
 
 function getSummaryBadges(entry: DreamEntry, t: (key: string) => string): Array<{ key: string; label: string; tone: 'green' | 'red' | 'orange' | 'blue' | 'default' }> {
@@ -171,6 +215,10 @@ function getSummaryBadges(entry: DreamEntry, t: (key: string) => string): Array<
     badges.push({ key: 'tool_calls', label: `${summary.agent.tool_calls} ${t('calls')}`, tone: 'blue' });
   }
   return badges;
+}
+
+function normalizeWorkflowStageLabel(label: string): string {
+  return label === 'Poetic diary rewrite' ? 'Diary' : label;
 }
 
 function workflowEventLabel(eventType: string): string {
@@ -318,7 +366,7 @@ function buildWorkflowStageRows(
     const existing = rowsByPhase.get(key);
     rowsByPhase.set(key, {
       key,
-      label: String(event.payload?.label || existing?.label || workflowEventLabel(event.event_type)),
+      label: normalizeWorkflowStageLabel(String(event.payload?.label || existing?.label || workflowEventLabel(event.event_type))),
       tone: workflowEventTone(event.event_type),
       detail: event.event_type === 'phase_completed' ? formatStageSummary(event.payload?.summary, t) : existing?.detail || '',
       conclusion: conclusionsByPhase.get(key) || existing?.conclusion || '',
@@ -338,28 +386,40 @@ interface DreamDetailViewProps {
   loading: boolean;
   canRollback: boolean;
   rollingBack: boolean;
+  reviewingChangeId?: number | null;
   onBack: () => void;
   onRollback: () => void;
+  onReviewChange?: (changeId: number, status: 'approved' | 'dismissed') => void;
+  onEditChange?: (uri: string) => void;
   t: (key: string) => string;
 }
 
-export function DreamDetailView({ entry, loading, canRollback, rollingBack, onBack, onRollback, t }: DreamDetailViewProps): React.JSX.Element {
+export function DreamDetailView({
+  entry,
+  loading,
+  canRollback,
+  rollingBack,
+  reviewingChangeId = null,
+  onBack,
+  onRollback,
+  onReviewChange,
+  onEditChange,
+  t,
+}: DreamDetailViewProps): React.JSX.Element {
+  const [showOriginalDiary, setShowOriginalDiary] = useState(false);
   const stats = useMemo(() => {
     const toolCalls = entry?.tool_calls || [];
-    const changes = entry?.memory_changes || [];
-    const workflowEvents = entry?.workflow_events || [];
-    const summaryStructure = entry?.summary?.structure;
     return {
       viewed: toolCalls.filter((call) => call.tool === 'get_node').length,
       modified: toolCalls.filter((call) => call.tool === 'update_node').length,
       created: toolCalls.filter((call) => call.tool === 'create_node').length,
       deleted: toolCalls.filter((call) => call.tool === 'delete_node').length,
-      moved: changes.filter((change) => change.type === 'move').length,
-      protectedBlocks: summaryStructure?.protected_blocks ?? workflowEvents.filter((event) => event.event_type === 'protected_node_blocked').length,
-      policyBlocks: summaryStructure?.policy_blocks ?? workflowEvents.filter((event) => event.event_type === 'policy_validation_blocked').length,
-      policyWarnings: summaryStructure?.policy_warnings ?? workflowEvents.filter((event) => event.event_type === 'policy_warning_emitted').length,
     };
   }, [entry]);
+
+  useEffect(() => {
+    setShowOriginalDiary(false);
+  }, [entry?.id]);
 
   if (loading || !entry) {
     return (
@@ -374,7 +434,9 @@ export function DreamDetailView({ entry, loading, canRollback, rollingBack, onBa
 
   const rawNarrative = entry.raw_narrative || entry.narrative || '';
   const poeticNarrative = entry.poetic_narrative || entry.narrative || rawNarrative;
-  const audit = parseDreamAudit(rawNarrative);
+  const originalNarrative = formatOriginalDreamNarrativeForView(rawNarrative, t);
+  const canToggleOriginalDiary = Boolean(rawNarrative && rawNarrative !== poeticNarrative);
+  const displayedNarrative = showOriginalDiary ? originalNarrative : poeticNarrative;
 
   return (
     <>
@@ -391,42 +453,50 @@ export function DreamDetailView({ entry, loading, canRollback, rollingBack, onBa
         </div>
       </div>
 
-      <div className="animate-in stagger-1 mb-5 grid grid-cols-2 gap-3 md:grid-cols-8">
+      <div className="animate-in stagger-1 mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label={t('Viewed')} value={stats.viewed} tone="blue" compact />
         <StatCard label={t('Modified')} value={stats.modified} tone="orange" compact />
         <StatCard label={t('Created')} value={stats.created} tone="green" compact />
         <StatCard label={t('Deleted')} value={stats.deleted} tone="red" compact />
-        <StatCard label={t('Moved')} value={stats.moved} tone="blue" compact />
-        <StatCard label={t('Protected')} value={stats.protectedBlocks} tone="orange" compact />
-        <StatCard label={t('Policy blocks')} value={stats.policyBlocks} tone="red" compact />
-        <StatCard label={t('Policy warnings')} value={stats.policyWarnings} tone="orange" compact />
       </div>
 
-      {poeticNarrative && (
+      {displayedNarrative && (
         <Section
-          title={t('Diary')}
+          title={showOriginalDiary ? t('Original Diary') : t('Diary')}
+          right={canToggleOriginalDiary ? (
+            <Button
+              variant="ghost"
+              aria-pressed={showOriginalDiary}
+              onClick={() => setShowOriginalDiary((current) => !current)}
+            >
+              {showOriginalDiary ? t('View diary') : t('View original diary')}
+            </Button>
+          ) : null}
           className="mb-5"
         >
           <div className="prose max-w-none">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{poeticNarrative}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayedNarrative}</ReactMarkdown>
           </div>
         </Section>
       )}
 
-      {audit && (
-        <DreamAuditSection audit={audit} showChangedNodesFallback={!entry.memory_changes?.length} t={t} />
-      )}
 
       {(entry.status === 'running' || (entry.workflow_events && entry.workflow_events.length > 0)) && (
         <AgentWorkflowSection
           workflowEvents={entry.workflow_events || []}
-          defaultExpanded
+          defaultExpanded={entry.status === 'running'}
           t={t}
         />
       )}
 
       {entry.memory_changes && entry.memory_changes.length > 0 && (
-        <MemoryChangesSection changes={entry.memory_changes} t={t} />
+        <MemoryChangesSection
+          changes={entry.memory_changes}
+          reviewingChangeId={reviewingChangeId}
+          onReviewChange={onReviewChange}
+          onEditChange={onEditChange}
+          t={t}
+        />
       )}
 
       {entry.summary && (
@@ -445,86 +515,6 @@ export function DreamDetailView({ entry, loading, canRollback, rollingBack, onBa
         </Notice>
       )}
     </>
-  );
-}
-
-interface DreamAuditSectionProps {
-  audit: DreamAudit;
-  showChangedNodesFallback: boolean;
-  t: (key: string) => string;
-}
-
-function DreamAuditSection({ audit, showChangedNodesFallback, t }: DreamAuditSectionProps): React.JSX.Element {
-  const changedNodes = showChangedNodesFallback ? audit.changed_nodes || [] : [];
-  const evidence = audit.evidence || [];
-
-  return (
-    <Section title={t('Dream Audit')} className="mb-5">
-      <div className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          {audit.primary_focus && <Badge tone="blue">{t('Primary focus')}: {audit.primary_focus}</Badge>}
-          {audit.confidence && <Badge tone="green">{t('Confidence')}: {audit.confidence}</Badge>}
-          {showChangedNodesFallback && <Badge tone="default">{t('Changed nodes')}: {changedNodes.length}</Badge>}
-          <Badge tone="default">{t('Evidence')}: {evidence.length}</Badge>
-        </div>
-
-        {changedNodes.length > 0 && (
-          <div>
-            <div className="mb-2 text-xs font-medium uppercase tracking-wide text-txt-tertiary">{t('Changed nodes')}</div>
-            <div className="space-y-2">
-              {changedNodes.map((node, index) => (
-                <div key={`${node.uri || 'node'}-${index}`} className="rounded-xl border border-separator-thin bg-bg-raised px-3 py-3">
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    {node.action && <Badge tone="blue">{node.action}</Badge>}
-                    {node.result && <Badge tone={resultTone(node.result)}>{node.result}</Badge>}
-                    {node.candidate_ids && node.candidate_ids.length > 0 && (
-                      <span className="text-[11px] text-txt-tertiary">{t('Candidates')}: {node.candidate_ids.join(', ')}</span>
-                    )}
-                  </div>
-                  {node.uri && <code className="block break-all text-xs font-mono text-txt-primary">{node.uri}</code>}
-                  {node.changes && node.changes.length > 0 && (
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-txt-secondary">
-                      {node.changes.map((change, changeIndex) => <li key={changeIndex}>{change}</li>)}
-                    </ul>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {evidence.length > 0 && (
-          <div>
-            <div className="mb-2 text-xs font-medium uppercase tracking-wide text-txt-tertiary">{t('Evidence')}</div>
-            <div className="space-y-2">
-              {evidence.map((item, index) => (
-                <div key={`${item.query_id || 'evidence'}-${index}`} className="rounded-xl border border-separator-thin bg-bg-raised px-3 py-3">
-                  {item.query_id && <code className="block break-all text-[11px] font-mono text-txt-tertiary">{item.query_id}</code>}
-                  {item.reason && <p className="mt-1 text-sm text-txt-secondary">{item.reason}</p>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {(audit.why_not_more_changes || audit.expected_effect) && (
-          <div className="grid gap-3 md:grid-cols-2">
-            {audit.why_not_more_changes && (
-              <div className="rounded-xl border border-separator-thin bg-bg-raised px-3 py-3">
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-txt-tertiary">{t('Why not more changes')}</div>
-                <p className="text-sm text-txt-secondary">{audit.why_not_more_changes}</p>
-              </div>
-            )}
-            {audit.expected_effect && (
-              <div className="rounded-xl border border-separator-thin bg-bg-raised px-3 py-3">
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-txt-tertiary">{t('Expected effect')}</div>
-                <p className="text-sm text-txt-secondary">{audit.expected_effect}</p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </Section>
   );
 }
 
@@ -582,31 +572,57 @@ function AgentWorkflowSection({ workflowEvents, defaultExpanded, t }: AgentWorkf
 
 interface MemoryChangesSectionProps {
   changes: MemoryChange[];
+  reviewingChangeId: number | null;
+  onReviewChange?: (changeId: number, status: 'approved' | 'dismissed') => void;
+  onEditChange?: (uri: string) => void;
   t: (key: string) => string;
 }
 
-function MemoryChangesSection({ changes, t }: MemoryChangesSectionProps): React.JSX.Element {
+function MemoryChangesSection({ changes, reviewingChangeId, onReviewChange, onEditChange, t }: MemoryChangesSectionProps): React.JSX.Element {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
   return (
     <Section title={t('Memory Changes')} subtitle={`${changes.length}`} className="mb-5">
       <div className="space-y-2">
-        {changes.map((change, index) => (
-          <div key={index} className="rounded-xl border border-separator-thin bg-bg-raised overflow-hidden">
-            <div
-              className="flex cursor-pointer items-center gap-2 px-3 py-2 transition-colors hover:bg-fill-quaternary"
-              onClick={() => setExpandedIdx(expandedIdx === index ? null : index)}
-            >
-              <Badge tone={changeTone(change.type)}>{t(change.type)}</Badge>
-              <code className="text-xs font-mono text-txt-primary flex-1 truncate">{change.uri}</code>
-              {change.before?.priority !== undefined && change.after?.priority !== undefined && change.before.priority !== change.after.priority && (
-                <span className="text-xs text-txt-tertiary">P{change.before.priority}→P{change.after.priority}</span>
-              )}
-              {change.type === 'move' && change.before?.uri && change.after?.uri && (
-                <span className="max-w-[16rem] truncate text-xs text-txt-tertiary">{change.before.uri} → {change.after.uri}</span>
-              )}
-              <span className="text-[11px] text-txt-quaternary">{expandedIdx === index ? '▲' : '▼'}</span>
-            </div>
+        {changes.map((change, index) => {
+          const reviewStatus = change.review_status || 'pending';
+          const changeId = Number(change.id || 0);
+          const reviewing = changeId > 0 && reviewingChangeId === changeId;
+          const editableUri = editableUriForChange(change);
+          return (
+            <div key={change.id || index} className="rounded-xl border border-separator-thin bg-bg-raised overflow-hidden">
+              <div
+                className="flex cursor-pointer items-center gap-2 px-3 py-2 transition-colors hover:bg-fill-quaternary"
+                onClick={() => setExpandedIdx(expandedIdx === index ? null : index)}
+              >
+                <Badge tone={changeTone(change.type)}>{t(change.type)}</Badge>
+                <Badge tone={reviewStatusTone(reviewStatus)}>{t(reviewStatusLabel(reviewStatus))}</Badge>
+                <code className="min-w-0 flex-1 truncate text-xs font-mono text-txt-primary">{change.uri}</code>
+                {change.before?.priority !== undefined && change.after?.priority !== undefined && change.before.priority !== change.after.priority && (
+                  <span className="text-xs text-txt-tertiary">P{change.before.priority}→P{change.after.priority}</span>
+                )}
+                {change.type === 'move' && change.before?.uri && change.after?.uri && (
+                  <span className="hidden max-w-[16rem] truncate text-xs text-txt-tertiary sm:inline">{change.before.uri} → {change.after.uri}</span>
+                )}
+                <div className="flex shrink-0 items-center gap-1" onClick={(event) => event.stopPropagation()}>
+                  {changeId > 0 && onReviewChange && reviewStatus !== 'approved' && (
+                    <Button size="sm" variant="ghost" onClick={() => onReviewChange(changeId, 'approved')} disabled={reviewing}>
+                      {reviewing ? t('Saving…') : t('Approve')}
+                    </Button>
+                  )}
+                  {changeId > 0 && onReviewChange && reviewStatus !== 'dismissed' && (
+                    <Button size="sm" variant="ghost" onClick={() => onReviewChange(changeId, 'dismissed')} disabled={reviewing}>
+                      {t('Dismiss')}
+                    </Button>
+                  )}
+                  {editableUri && onEditChange && (
+                    <Button size="sm" variant="ghost" onClick={() => onEditChange(editableUri)}>
+                      {t('Edit')}
+                    </Button>
+                  )}
+                  <span className="text-[11px] text-txt-quaternary">{expandedIdx === index ? '▲' : '▼'}</span>
+                </div>
+              </div>
             {expandedIdx === index && (
               <div className="space-y-2 border-t border-separator-thin px-3 py-3">
                 {change.type === 'update' && change.before?.content !== undefined && change.after?.content !== undefined ? (
@@ -639,8 +655,9 @@ function MemoryChangesSection({ changes, t }: MemoryChangesSectionProps): React.
                 )}
               </div>
             )}
-          </div>
-        ))}
+            </div>
+          );
+        })}
       </div>
     </Section>
   );

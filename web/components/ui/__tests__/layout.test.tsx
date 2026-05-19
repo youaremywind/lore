@@ -13,7 +13,7 @@ vi.mock('../controls', () => ({
   surfaceCardClassName: 'rounded-2xl border border-separator-thin bg-bg-elevated shadow-card',
 }));
 
-import { ActionPanel, Card, InlineMeta, LoadingBlock, Section, surfaceCardClassName } from '../layout';
+import { ActionPanel, Card, InlineMeta, LoadingBlock, PageCanvas, Section, surfaceCardClassName } from '../layout';
 
 describe('ui layout Card', () => {
   it('renders through Lobe Block with default padding 16', () => {
@@ -86,5 +86,14 @@ describe('ui layout Card', () => {
     expect(section).toContain('Footer');
     expect(section).toContain('grid gap-3');
     expect(section).toContain('text-[15px]');
+  });
+
+  it('keeps the mobile bottom nav clearance inside the scrollable page canvas', () => {
+    const html = renderToStaticMarkup(<PageCanvas>Content</PageCanvas>);
+
+    expect(html).toContain('overflow-y-auto');
+    expect(html).toContain('pt-6');
+    expect(html).toContain('pb-24');
+    expect(html).toContain('md:py-14');
   });
 });

@@ -25,6 +25,11 @@ from lore_memory import LoreMemoryProvider
 from lore_memory.client import LoreClient
 
 
+RECALL_GET_NODE_DESCRIPTION = "Open a memory node. REQUIRED when opening a URI from a <recall>: copy the exact session_id and query_id from that <recall> tag."
+RECALL_SESSION_ID_DESCRIPTION = "REQUIRED when the URI came from <recall>: copy the exact session_id from that <recall> tag."
+RECALL_QUERY_ID_DESCRIPTION = "REQUIRED when the URI came from <recall>: copy the exact query_id from that <recall> tag."
+
+
 class LoreClientThinAdapterTests(unittest.TestCase):
     def test_create_node_sends_glossary_in_node_request(self):
         client = LoreClient(base_url="http://example.com")
@@ -73,12 +78,36 @@ class LoreClientThinAdapterTests(unittest.TestCase):
 
         self.assertEqual(result["uri"], "core://agent/profile-renamed")
         self.assertEqual(len(requests), 1)
-        self.assertEqual(requests[0][1]["data"]["glossary"], ["fresh"])
+        self.assertNotIn("glossary", requests[0][1]["data"])
         self.assertEqual(requests[0][1]["data"]["glossary_add"], ["memory"])
         self.assertEqual(requests[0][1]["data"]["glossary_remove"], ["archive"])
 
+    def test_bridge_methods_call_bridge_routes(self):
+        client = LoreClient(base_url="http://example.com")
+        requests = []
+        client._request = lambda *args, **kwargs: {"ok": True} if not requests.append((args, kwargs)) else {}
+
+        client.bridge_startup(
+            session_id="sess-1",
+            channel="hermes",
+            project={"dir_name": "lore", "repo_name": "lore"},
+            include_guidance=True,
+        )
+        client.bridge_recall(session_id="sess-1", prompt="hello")
+
+        self.assertEqual(requests[0][0], ("POST", "/bridge/startup"))
+        self.assertEqual(requests[0][1]["data"]["session_id"], "sess-1")
+        self.assertEqual(requests[0][1]["data"]["channel"], "hermes")
+        self.assertEqual(requests[1][0], ("POST", "/bridge/recall"))
+        self.assertEqual(requests[1][1]["data"], {"session_id": "sess-1", "prompt": "hello"})
+        self.assertEqual(len(requests), 2)
+
 
 class FakeClient:
+    def __init__(self):
+        self.last_update_kwargs = None
+        self.ended_session_id = None
+
     def parse_uri(self, uri):
         return uri.split("://", 1)[0], uri.split("://", 1)[1]
 
@@ -89,6 +118,7 @@ class FakeClient:
         return {"uri": "core://agent/profile", "node_uuid": "uuid-create"}
 
     def update_node(self, **kwargs):
+        self.last_update_kwargs = kwargs
         return {"uri": "core://agent/profile-renamed", "node_uuid": "uuid-update"}
 
     def delete_node(self, *args, **kwargs):
@@ -96,6 +126,12 @@ class FakeClient:
 
     def move_node(self, *args, **kwargs):
         return {"old_uri": "core://old/path", "new_uri": "core://new/path", "uri": "core://new/path"}
+
+    def bridge_startup(self, **kwargs):
+        return {"system_context": "BRIDGE SYSTEM"}
+
+    def bridge_recall(self, **kwargs):
+        return {"context": "<recall session_id=\"sess-1\" query_id=\"q1\">\n0.70 | core://project\n</recall>"}
 
 
 class LoreProviderThinAdapterTests(unittest.TestCase):
@@ -123,6 +159,62 @@ class LoreProviderThinAdapterTests(unittest.TestCase):
         })
 
         self.assertEqual(result, "Updated: core://agent/profile-renamed")
+
+    def test_update_tool_does_not_expose_glossary_replacement(self):
+        schemas = {tool["name"]: tool for tool in self.provider.get_tool_schemas()}
+        props = schemas["lore_update_node"]["parameters"]["properties"]
+
+        self.assertNotIn("glossary", props)
+        self.assertIn("glossary_add", props)
+        self.assertIn("glossary_remove", props)
+        self.assertNotIn("glossary fields", schemas["lore_update_node"]["description"])
+
+    def test_initialize_uses_bridge_startup_context(self):
+        import lore_memory as provider_module
+        original_client = provider_module.LoreClient
+        fake = FakeClient()
+        provider_module.LoreClient = lambda *args, **kwargs: fake
+        try:
+            provider = LoreMemoryProvider()
+            provider.initialize("sess-1")
+        finally:
+            provider_module.LoreClient = original_client
+
+        self.assertEqual(provider.system_prompt_block(), "BRIDGE SYSTEM")
+
+    def test_prefetch_uses_bridge_recall_context(self):
+        result = self.provider.prefetch("hello", session_id="sess-1")
+        self.assertIn("core://project", result)
+
+    def test_session_end_is_noop(self):
+        self.provider.on_session_end([])
+        self.assertIsNone(self.provider._client.ended_session_id)
+
+
+    def test_session_read_tools_are_not_exposed(self):
+        schemas = {tool["name"]: tool for tool in self.provider.get_tool_schemas()}
+        self.assertNotIn("lore_list_session_reads", schemas)
+        self.assertNotIn("lore_clear_session_reads", schemas)
+
+    def test_get_node_tool_uses_unified_recall_identifier_descriptions(self):
+        schemas = {tool["name"]: tool for tool in self.provider.get_tool_schemas()}
+        tool = schemas["lore_get_node"]
+        props = tool["parameters"]["properties"]
+
+        self.assertEqual(tool["description"], RECALL_GET_NODE_DESCRIPTION)
+        self.assertEqual(props["session_id"]["description"], RECALL_SESSION_ID_DESCRIPTION)
+        self.assertEqual(props["query_id"]["description"], RECALL_QUERY_ID_DESCRIPTION)
+
+    def test_update_tool_ignores_glossary_replacement_argument(self):
+        result = self.provider._tool_lore_update_node({
+            "uri": "core://agent/profile",
+            "glossary": ["fresh"],
+            "glossary_add": ["memory"],
+        })
+
+        self.assertEqual(result, "Updated: core://agent/profile-renamed")
+        self.assertNotIn("glossary", self.provider._client.last_update_kwargs)
+        self.assertEqual(self.provider._client.last_update_kwargs["glossary_add"], ["memory"])
 
     def test_delete_tool_formats_canonical_delete_receipt(self):
         result = self.provider._tool_lore_delete_node({"uri": "core://legacy/profile"})

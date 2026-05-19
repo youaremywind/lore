@@ -55,6 +55,7 @@ import { ensureRecallIndex } from '../../recall/recall';
 import {
   getDreamDiary,
   getDreamEntry,
+  reviewDreamChange,
   rollbackDream,
   getDreamConfig,
   updateDreamConfig,
@@ -139,7 +140,15 @@ describe('getDreamEntry', () => {
       error: null, tool_calls: [{ tool: 'get_node', args: {} }], details: {},
     };
     const eventRows = [
-      { event_type: 'update', node_uri: 'core://test', before_snapshot: { content: 'old' }, after_snapshot: { content: 'new' }, created_at: '2024-01-01T00:00:30Z' },
+      {
+        id: 22,
+        event_type: 'update',
+        node_uri: 'core://test',
+        before_snapshot: { content: 'old' },
+        after_snapshot: { content: 'new' },
+        details: { dream_review: { status: 'approved', reviewed_at: '2024-01-01T00:02:00Z' } },
+        created_at: '2024-01-01T00:00:30Z',
+      },
     ];
     mockListDreamWorkflowEvents.mockResolvedValue([{ id: 7, diary_id: 1, event_type: 'run_started', payload: {}, created_at: '2024-01-01T00:00:01Z' }] as any);
     mockSql
@@ -153,7 +162,10 @@ describe('getDreamEntry', () => {
     expect(result!.tool_calls).toHaveLength(1);
     expect(result!.workflow_events).toHaveLength(1);
     expect(result!.memory_changes).toHaveLength(1);
+    expect(result!.memory_changes![0].id).toBe(22);
     expect(result!.memory_changes![0].type).toBe('update');
+    expect(result!.memory_changes![0].review_status).toBe('approved');
+    expect(result!.memory_changes![0].reviewed_at).toBe('2024-01-01T00:02:00.000Z');
   });
 
   it('exposes raw and poetic narratives while keeping narrative on the display version', async () => {
@@ -175,6 +187,36 @@ describe('getDreamEntry', () => {
       raw_narrative: 'Raw audit diary',
       poetic_narrative: 'Poetic diary',
     });
+  });
+});
+
+describe('reviewDreamChange', () => {
+  beforeEach(() => {
+    mockSql.mockReset();
+  });
+
+  it('marks a dream memory event review status', async () => {
+    mockSql.mockResolvedValueOnce(makeResult([{
+      id: 22,
+      details: { dream_review: { status: 'approved', reviewed_at: '2024-01-01T00:02:00Z', source: 'web' } },
+    }]));
+
+    const result = await reviewDreamChange({ eventId: 22, status: 'approved' });
+
+    expect(result).toMatchObject({ event_id: 22, status: 'approved' });
+    const updateCall = mockSql.mock.calls[0];
+    expect(String(updateCall[0])).toContain('UPDATE memory_events');
+    expect(String(updateCall[0])).toContain("source = 'dream:auto'");
+    expect(updateCall[1]?.[0]).toBe(22);
+    expect(JSON.parse(String(updateCall[1]?.[1]))).toMatchObject({
+      status: 'approved',
+      source: 'web',
+    });
+  });
+
+  it('rejects unsupported dream review statuses', async () => {
+    await expect(reviewDreamChange({ eventId: 22, status: 'bad' })).rejects.toThrow('Unsupported dream review status');
+    expect(mockSql).not.toHaveBeenCalled();
   });
 });
 
@@ -400,7 +442,7 @@ describe('runDream', () => {
         eventContext: { source: 'dream:auto', session_id: 'dream:1' },
       }),
     );
-    expect(vi.mocked(recallAnalytics.getDreamRecallReview)).toHaveBeenCalledWith({ limit: 100 });
+    expect(vi.mocked(recallAnalytics.getDreamRecallReview)).toHaveBeenCalledWith({ days: 1, limit: 100 });
 
     const updateCall = mockSql.mock.calls.find((call) => String(call[0]).includes('UPDATE dream_diary SET status = \'completed\''));
     expect(updateCall).toBeTruthy();
@@ -481,6 +523,7 @@ describe('runDream', () => {
     expect(result.narrative).toBe('done');
     expect(mockAppendDreamWorkflowEvent).toHaveBeenCalledWith(2, 'phase_completed', expect.objectContaining({
       phase: 'poetic_rewrite',
+      label: 'Diary',
       summary: expect.objectContaining({ fallback: true, error: 'rewrite down' }),
     }));
   });

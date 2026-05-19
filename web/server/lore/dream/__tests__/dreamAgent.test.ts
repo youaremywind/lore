@@ -54,9 +54,6 @@ vi.mock('../../ops/policy', () => ({
   validateUpdatePolicy: vi.fn(),
   validateDeletePolicy: vi.fn(),
 }));
-vi.mock('../../memory/session', () => ({
-  markSessionRead: vi.fn(),
-}));
 vi.mock('node:fs', () => ({
   readFileSync: vi.fn(() => '# MCP Guidance\nlore_boot\nlore_guidance\nlore_get_node is useful'),
 }));
@@ -84,7 +81,6 @@ import {
 import { getNodeWriteHistory, getDreamMemoryEventSummary } from '../../memory/writeEvents';
 import { getPathEffectiveness } from '../../recall/feedbackAnalytics';
 import { validateCreatePolicy, validateDeletePolicy, validateUpdatePolicy } from '../../ops/policy';
-import { markSessionRead } from '../../memory/session';
 import { listMemoryViewsByNode } from '../../view/memoryViewQueries';
 import {
   loadLlmConfig,
@@ -131,7 +127,6 @@ const mockGetPathEffectiveness = vi.mocked(getPathEffectiveness);
 const mockValidateCreatePolicy = vi.mocked(validateCreatePolicy);
 const mockValidateUpdatePolicy = vi.mocked(validateUpdatePolicy);
 const mockValidateDeletePolicy = vi.mocked(validateDeletePolicy);
-const mockMarkSessionRead = vi.mocked(markSessionRead);
 const mockListMemoryViewsByNode = vi.mocked(listMemoryViewsByNode);
 
 function makeInitialContext(overrides: Partial<DreamInitialContext> = {}): DreamInitialContext {
@@ -247,7 +242,7 @@ describe('buildDreamTools', () => {
     expect(names).toContain('get_node');
     expect(names).toContain('search');
     expect(names).toContain('list_domains');
-    expect(names).toContain('get_today_recall_metadata');
+    expect(names).toContain('get_recall_metadata');
     expect(names).not.toContain('get_node_recall_detail');
     expect(names).toContain('get_query_recall_detail');
     expect(names).toContain('get_query_candidates');
@@ -275,10 +270,11 @@ describe('buildDreamTools', () => {
   it('exposes glossary changes through update_node only', () => {
     const updateTool = buildDreamTools().find((tool) => tool.name === 'update_node');
     expect(updateTool?.parameters.properties).toMatchObject({
-      glossary: { type: 'array', items: { type: 'string' } },
       glossary_add: { type: 'array', items: { type: 'string' } },
       glossary_remove: { type: 'array', items: { type: 'string' } },
     });
+    expect(updateTool?.parameters.properties).not.toHaveProperty('glossary');
+    expect(updateTool?.description).not.toContain('glossary fields');
   });
 
   it('each tool has required parameters field', () => {
@@ -380,10 +376,10 @@ describe('executeDreamTool', () => {
     expect(mockListDomains).toHaveBeenCalled();
   });
 
-  it('dispatches get_today_recall_metadata to raw recall metadata helper', async () => {
+  it('dispatches get_recall_metadata to raw recall metadata helper', async () => {
     mockGetDreamRecallReview.mockResolvedValue({ queries: [] } as any);
-    await executeDreamTool('get_today_recall_metadata', { date: '2026-05-07', limit: 100, offset: 10 });
-    expect(mockGetDreamRecallReview).toHaveBeenCalledWith({ date: '2026-05-07', limit: 100, offset: 10 });
+    await executeDreamTool('get_recall_metadata', { date: '2026-05-07', limit: 100, offset: 10 });
+    expect(mockGetDreamRecallReview).toHaveBeenCalledWith({ date: '2026-05-07', days: 0, limit: 100, offset: 10 });
   });
 
   it('dispatches get_query_recall_detail to dream-focused query detail', async () => {
@@ -542,18 +538,6 @@ describe('executeDreamTool', () => {
         ],
       },
     });
-    expect(mockMarkSessionRead).toHaveBeenCalledWith({
-      session_id: 'dream:42',
-      uri: 'core://project',
-      node_uuid: 'root-1',
-      source: 'dream:auto:inspect_tree',
-    });
-    expect(mockMarkSessionRead).toHaveBeenCalledWith({
-      session_id: 'dream:42',
-      uri: 'core://project/api',
-      node_uuid: 'api-1',
-      source: 'dream:auto:inspect_tree',
-    });
   });
 
   it('dispatches inspect_views', async () => {
@@ -622,24 +606,8 @@ describe('executeDreamTool', () => {
     expect(mockCreateNode).not.toHaveBeenCalled();
   });
 
-  it('tracks session reads for get_node when session context is provided', async () => {
-    mockGetNodePayload.mockResolvedValue({
-      node: { uri: 'core://test', node_uuid: 'node-1' },
-      children: [],
-      breadcrumbs: [],
-    } as any);
 
-    await executeDreamTool('get_node', { uri: 'core://test' }, { source: 'dream:auto', session_id: 'dream:42' });
-
-    expect(mockMarkSessionRead).toHaveBeenCalledWith({
-      session_id: 'dream:42',
-      uri: 'core://test',
-      node_uuid: 'node-1',
-      source: 'dream:auto:get_node',
-    });
-  });
-
-  it('passes session context through to policy-aware update_node validation', async () => {
+  it('validates update_node policy without read-tracking session state', async () => {
     mockUpdateNodeByPath.mockResolvedValue({ success: true } as any);
 
     await executeDreamTool('update_node', { uri: 'core://test', content: 'updated' }, { source: 'dream:auto', session_id: 'dream:7' });
@@ -649,7 +617,6 @@ describe('executeDreamTool', () => {
       path: 'test',
       priority: undefined,
       disclosure: undefined,
-      sessionId: 'dream:7',
     });
     expect(mockUpdateNodeByPath).toHaveBeenCalledWith(
       expect.objectContaining({ domain: 'core', path: 'test', content: 'updated' }),
@@ -660,7 +627,7 @@ describe('executeDreamTool', () => {
   it('returns canonical policy validation blocks for Dream writes', async () => {
     mockValidateUpdatePolicy.mockResolvedValue({
       errors: ['priority budget exceeded'],
-      warnings: ['read before modify first'],
+      warnings: ['policy warning'],
     });
 
     const result = await executeDreamTool('update_node', { uri: 'core://test', content: 'updated' });
@@ -669,8 +636,8 @@ describe('executeDreamTool', () => {
       error: 'priority budget exceeded',
       detail: 'priority budget exceeded',
       code: 'validation_error',
-      warnings: ['read before modify first'],
-      policy_warnings: ['read before modify first'],
+      warnings: ['policy warning'],
+      policy_warnings: ['policy warning'],
       status: 422,
     });
     expect(mockUpdateNodeByPath).not.toHaveBeenCalled();
@@ -717,14 +684,12 @@ describe('executeDreamTool', () => {
       path: 'test',
       priority: undefined,
       disclosure: undefined,
-      sessionId: null,
     });
     expect(mockUpdateNodeByPath).toHaveBeenCalledWith(
       expect.objectContaining({
         domain: 'core',
         path: 'test',
         content: 'updated',
-        glossary: ['alpha', 'beta'],
         glossaryAdd: ['gamma'],
         glossaryRemove: ['old'],
       }),
@@ -735,7 +700,7 @@ describe('executeDreamTool', () => {
   it('dispatches delete_node', async () => {
     mockDeleteNodeByPath.mockResolvedValue({ success: true } as any);
     await executeDreamTool('delete_node', { uri: 'core://test' });
-    expect(mockValidateDeletePolicy).toHaveBeenCalledWith({ domain: 'core', path: 'test', sessionId: null });
+    expect(mockValidateDeletePolicy).toHaveBeenCalledWith({ domain: 'core', path: 'test' });
     expect(mockDeleteNodeByPath).toHaveBeenCalledWith({ domain: 'core', path: 'test' }, DREAM_EVENT_CONTEXT);
   });
 
@@ -1010,8 +975,8 @@ describe('processDreamToolCalls', () => {
         detail: 'priority budget exceeded',
         code: 'validation_error',
         status: 422,
-        warnings: ['read before modify first'],
-        policy_warnings: ['read before modify first'],
+        warnings: ['policy warning'],
+        policy_warnings: ['policy warning'],
       }),
     });
 
@@ -1023,8 +988,8 @@ describe('processDreamToolCalls', () => {
           turn: 1,
           tool: 'update_node',
           reason: 'priority budget exceeded',
-          warnings: ['read before modify first'],
-          policy_warnings: ['read before modify first'],
+          warnings: ['policy warning'],
+          policy_warnings: ['policy warning'],
         },
       },
       {
@@ -1032,8 +997,8 @@ describe('processDreamToolCalls', () => {
         payload: {
           turn: 1,
           tool: 'update_node',
-          warnings: ['read before modify first'],
-          policy_warnings: ['read before modify first'],
+          warnings: ['policy warning'],
+          policy_warnings: ['policy warning'],
         },
       },
       {
@@ -1045,8 +1010,8 @@ describe('processDreamToolCalls', () => {
           blocked: true,
           protected_blocked: false,
           policy_blocked: true,
-          warnings: ['read before modify first'],
-          policy_warnings: ['read before modify first'],
+          warnings: ['policy warning'],
+          policy_warnings: ['policy warning'],
         },
       },
     ]);

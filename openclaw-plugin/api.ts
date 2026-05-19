@@ -20,7 +20,6 @@ export function pickPluginConfig(api: any) {
     recallMinDisplayScore: Number.isFinite(cfg.minDisplayScore) ? Number(cfg.minDisplayScore) : DEFAULT_RECALL_MIN_DISPLAY_SCORE,
     recallMaxDisplayItems: Number.isFinite(cfg.maxDisplayItems) ? Number(cfg.maxDisplayItems) : DEFAULT_RECALL_MAX_DISPLAY_ITEMS,
     recallScorePrecision: Number.isFinite(cfg.scorePrecision) ? Number(cfg.scorePrecision) : DEFAULT_RECALL_SCORE_PRECISION,
-    readNodeDisplayMode: cfg.readNodeDisplayMode === "hard" ? "hard" : "soft",
     excludeBootFromResults: cfg.excludeBootFromResults !== false,
   };
 }
@@ -52,7 +51,7 @@ export async function fetchJson(pluginCfg: any, path: string, options: any = {})
       ...authHeaders(pluginCfg, options.method && options.method !== "GET"),
       ...(options.headers || {}),
     },
-    signal: AbortSignal.timeout(pluginCfg.timeoutMs),
+    signal: AbortSignal.timeout(pluginCfg.timeoutMs || DEFAULT_TIMEOUT_MS),
   });
 
   const text = await response.text();

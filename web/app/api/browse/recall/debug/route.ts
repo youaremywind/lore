@@ -14,7 +14,6 @@ function buildDebugBody(searchParams: URLSearchParams): Record<string, unknown> 
     max_display_items: searchParams.get('max_display_items') != null ? Number(searchParams.get('max_display_items')) : undefined,
     min_display_score: searchParams.get('min_display_score') != null ? Number(searchParams.get('min_display_score')) : undefined,
     score_precision: searchParams.get('score_precision') != null ? Number(searchParams.get('score_precision')) : undefined,
-    read_node_display_mode: String(searchParams.get('read_node_display_mode') || '').trim() || undefined,
     exclude_boot_from_results: searchParams.get('exclude_boot_from_results') == null
       ? undefined
       : ['1', 'true', 'yes', 'on'].includes(String(searchParams.get('exclude_boot_from_results')).toLowerCase()),

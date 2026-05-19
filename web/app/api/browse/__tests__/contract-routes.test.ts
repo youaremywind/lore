@@ -47,7 +47,6 @@ import * as glossaryRoute from '../glossary/route';
 import * as historyRoute from '../history/route';
 import * as recallRoute from '../recall/route';
 import * as recallStatsRoute from '../recall/stats/route';
-import * as sessionReadRoute from '../session/read/route';
 import * as recallUsageRoute from '../recall/usage/route';
 
 vi.mock('../../../../server/lore/recall/recall', () => ({
@@ -58,18 +57,12 @@ vi.mock('../../../../server/lore/recall/recall', () => ({
 vi.mock('../../../../server/lore/recall/recallAnalytics', () => ({
   getRecallStats: vi.fn(),
 }));
-vi.mock('../../../../server/lore/memory/session', () => ({
-  listSessionReads: vi.fn(),
-  markSessionRead: vi.fn(),
-  clearSessionReads: vi.fn(),
-}));
 vi.mock('../../../../server/lore/recall/recallEventLog', () => ({
   markRecallEventsUsedInAnswer: vi.fn(),
 }));
 
 import { getRecallRuntimeConfig, loadRecallSafetyConfig, recallMemories } from '../../../../server/lore/recall/recall';
 import { getRecallStats } from '../../../../server/lore/recall/recallAnalytics';
-import { listSessionReads, markSessionRead, clearSessionReads } from '../../../../server/lore/memory/session';
 import { markRecallEventsUsedInAnswer } from '../../../../server/lore/recall/recallEventLog';
 
 const mockRequireBearerAuth = vi.mocked(requireBearerAuth);
@@ -93,9 +86,6 @@ const mockRecallMemories = vi.mocked(recallMemories);
 const mockGetRecallRuntimeConfig = vi.mocked(getRecallRuntimeConfig);
 const mockLoadRecallSafetyConfig = vi.mocked(loadRecallSafetyConfig);
 const mockGetRecallStats = vi.mocked(getRecallStats);
-const mockListSessionReads = vi.mocked(listSessionReads);
-const mockMarkSessionRead = vi.mocked(markSessionRead);
-const mockClearSessionReads = vi.mocked(clearSessionReads);
 const mockMarkRecallEventsUsedInAnswer = vi.mocked(markRecallEventsUsedInAnswer);
 
 describe('browse route contracts', () => {
@@ -179,7 +169,7 @@ describe('browse route contracts', () => {
   });
 
   it('returns canonical delete receipts with warnings envelopes', async () => {
-    mockValidateDeletePolicy.mockResolvedValueOnce({ errors: [], warnings: ['read before delete'] } as any);
+    mockValidateDeletePolicy.mockResolvedValueOnce({ errors: [], warnings: ['delete warning'] } as any);
     mockDeleteNodeByPath.mockResolvedValueOnce({
       success: true,
       operation: 'delete',
@@ -197,8 +187,8 @@ describe('browse route contracts', () => {
     expect(response.status).toBe(200);
     expect(body.operation).toBe('delete');
     expect(body.deleted_uri).toBe('core://agent/profile');
-    expect(body.warnings).toEqual(['read before delete']);
-    expect(body.policy_warnings).toEqual(['read before delete']);
+    expect(body.warnings).toEqual(['delete warning']);
+    expect(body.policy_warnings).toEqual(['delete warning']);
   });
 
   it('returns canonical error codes from node GET', async () => {
@@ -288,11 +278,6 @@ describe('browse route contracts', () => {
     expect(recallResponse.status).toBe(409);
     expect(recallBody.code).toBe('conflict');
 
-    mockListSessionReads.mockRejectedValueOnce(Object.assign(new Error('Missing session'), { status: 404 }));
-    const sessionResponse = await sessionReadRoute.GET(new Request('http://localhost/api/browse/session/read?session_id=s1') as any);
-    const sessionBody = await sessionResponse.json();
-    expect(sessionResponse.status).toBe(404);
-    expect(sessionBody.code).toBe('not_found');
 
     mockMarkRecallEventsUsedInAnswer.mockRejectedValueOnce(Object.assign(new Error('Bad recall usage'), { status: 422 }));
     const usageResponse = await recallUsageRoute.POST(new Request('http://localhost/api/browse/recall/usage', {

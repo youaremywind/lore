@@ -42,7 +42,6 @@ interface RecallItem extends ItemWithCues {
   score_display?: number | null;
   score?: number | string | null;
   uri?: string;
-  read?: boolean;
 }
 
 export function formatRecallBlock(items: RecallItem[], precision = 2): string {
@@ -53,7 +52,7 @@ export function formatRecallBlock(items: RecallItem[], precision = 2): string {
       ? Number(item.score_display).toFixed(precision)
       : String(item?.score ?? '');
     const cues = readCueList(item, 3);
-    const cueText = `${item?.read ? 'read · ' : ''}${cues.join(' · ')}`.trim();
+    const cueText = cues.join(' · ').trim();
     lines.push(`${score} | ${item?.uri || ''}${cueText ? ` | ${cueText}` : ''}`);
   }
   lines.push('</recall>');

@@ -22,6 +22,10 @@ function makePluginCfg(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const RECALL_GET_NODE_DESCRIPTION = 'Open a memory node. REQUIRED when opening a URI from a <recall>: copy the exact session_id and query_id from that <recall> tag.';
+const RECALL_SESSION_ID_DESCRIPTION = 'REQUIRED when the URI came from <recall>: copy the exact session_id from that <recall> tag.';
+const RECALL_QUERY_ID_DESCRIPTION = 'REQUIRED when the URI came from <recall>: copy the exact query_id from that <recall> tag.';
+
 describe('Pi extension tools', () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
@@ -40,11 +44,55 @@ describe('Pi extension tools', () => {
       'lore_update_node',
       'lore_delete_node',
       'lore_move_node',
-      'lore_list_session_reads',
-      'lore_clear_session_reads',
     ]);
     expect(pi.tools.lore_search.promptSnippet).toContain('Search Lore');
     expect(pi.tools.lore_get_node.promptGuidelines.join('\n')).toContain('lore_get_node');
+  });
+
+  it('lore_get_node exposes explicit recall identifiers without internal params', () => {
+    const pi = makeMockPi();
+    registerTools(pi as any, makePluginCfg());
+    const tool = pi.tools.lore_get_node;
+    const props = tool.parameters.properties;
+
+    expect(tool.description).toBe(RECALL_GET_NODE_DESCRIPTION);
+    expect(props.session_id.description).toBe(RECALL_SESSION_ID_DESCRIPTION);
+    expect(props.query_id.description).toBe(RECALL_QUERY_ID_DESCRIPTION);
+    expect(props.session_id).toBeDefined();
+    expect(props.query_id).toBeDefined();
+    expect(props.__session_id).toBeUndefined();
+    expect(props.__session_key).toBeUndefined();
+  });
+
+
+
+  it('lore_get_node records recall usage without session read tracking', async () => {
+    const pi = makeMockPi();
+    registerTools(pi as any, makePluginCfg());
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => JSON.stringify({ node: { uri: 'core://agent', node_uuid: 'node-1', content: 'Agent' }, children: [] }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => JSON.stringify({ ok: true }),
+      }));
+
+    const result = await pi.tools.lore_get_node.execute('tool-1', {
+      uri: 'core://agent',
+      session_id: 'sess-1',
+      query_id: 'query-1',
+    }, undefined, undefined, {});
+
+    const urls = (fetch as any).mock.calls.map((call: any[]) => String(call[0]));
+    expect(result.details.ok).toBe(true);
+    expect(urls.some((url: string) => url.includes('/browse/recall/usage'))).toBe(true);
+    expect(urls.some((url: string) => url.includes('/browse/session/read'))).toBe(false);
   });
 
   it('status tool calls Lore with client_type=pi', async () => {
@@ -126,11 +174,23 @@ describe('Pi extension tools', () => {
 
     expect(result.details.ok).toBe(true);
     expect((fetch as any).mock.calls).toHaveLength(1);
-    expect(JSON.parse((fetch as any).mock.calls[0][1].body)).toMatchObject({
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body);
+    expect(body).toMatchObject({
       content: 'updated',
-      glossary: ['fresh'],
       glossary_add: ['memory'],
       glossary_remove: ['archive'],
     });
+    expect(body).not.toHaveProperty('glossary');
+    expect(result.content[0].text).not.toContain('glossary=');
+  });
+
+  it('update exposes glossary mutations without full replacement', () => {
+    const pi = makeMockPi();
+    registerTools(pi as any, makePluginCfg());
+    const props = pi.tools.lore_update_node.parameters.properties;
+    expect(props.glossary).toBeUndefined();
+    expect(props.glossary_add).toBeDefined();
+    expect(props.glossary_remove).toBeDefined();
+    expect(pi.tools.lore_update_node.description).not.toContain('glossary fields');
   });
 });

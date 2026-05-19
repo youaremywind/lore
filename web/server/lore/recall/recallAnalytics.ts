@@ -438,7 +438,6 @@ export function reshapeEventsForDebugView(rows: EventRow[], mergedCandidates: Me
       cues: c.cues,
       client_type: c.client_type,
       score_breakdown: c.score_breakdown,
-      read: false,
       boot: false,
     }));
 
@@ -844,10 +843,12 @@ function systemTimezone(): string {
 
 export async function getDreamRecallReview({
   date = '',
+  days = 0,
   limit = 100,
   offset = 0,
 }: {
   date?: string;
+  days?: number;
   limit?: number;
   offset?: number;
 } = {}): Promise<DreamRecallReviewResult> {
@@ -856,13 +857,22 @@ export async function getDreamRecallReview({
   const safeOffset = Math.max(0, Number(offset) || 0);
   const tz = systemTimezone();
 
+  let timeClause: string;
+  let timeParams: unknown[];
+  let safeDays = 0;
+
+  if (days && Number(days) > 0) {
+    safeDays = intervalDaysSql(days);
+    timeClause = `q.created_at >= NOW() - ($1::int * INTERVAL '1 day')`;
+    timeParams = [safeDays];
+  } else {
+    timeClause = `q.created_at >= (($1::date)::timestamp AT TIME ZONE $2)
+      AND q.created_at < ((($1::date + 1)::timestamp) AT TIME ZONE $2)`;
+    timeParams = [safeDate, tz];
+  }
+
   const result = await sql(
     `
-      WITH bounds AS (
-        SELECT
-          (($1::date)::timestamp AT TIME ZONE $2) AS start_at,
-          ((($1::date + 1)::timestamp) AT TIME ZONE $2) AS end_at
-      )
       SELECT
         q.query_id,
         q.query_text,
@@ -872,21 +882,20 @@ export async function getDreamRecallReview({
         q.shown_count,
         q.used_count,
         q.created_at
-      FROM recall_queries q, bounds
-      WHERE q.created_at >= bounds.start_at
-        AND q.created_at < bounds.end_at
+      FROM recall_queries q
+      WHERE ${timeClause}
       ORDER BY q.created_at DESC, q.query_id DESC
-      LIMIT $3
-      OFFSET $4
+      LIMIT $${timeParams.length + 1}
+      OFFSET $${timeParams.length + 2}
     `,
-    [safeDate, tz, safeLimit, safeOffset],
+    [...timeParams, safeLimit, safeOffset],
   );
 
   const queries = result.rows.map((row: Record<string, unknown>) => {
     const queryText = String(row.query_text || '');
     return {
       query_id: String(row.query_id || '').trim(),
-      content: queryText.length > 50 ? queryText.slice(0, 50) : queryText,
+      content: queryText.length > 300 ? queryText.slice(0, 300) : queryText,
       content_full_chars: queryText.length,
       session_id: typeof row.session_id === 'string' && row.session_id.trim() ? row.session_id.trim() : null,
       client_type: typeof row.client_type === 'string' && row.client_type.trim() ? row.client_type.trim() : null,
@@ -898,7 +907,7 @@ export async function getDreamRecallReview({
   });
 
   return {
-    date: safeDate,
+    date: days && Number(days) > 0 ? `last_${safeDays}_days` : safeDate,
     limit: safeLimit,
     offset: safeOffset,
     summary: {

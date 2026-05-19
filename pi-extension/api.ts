@@ -18,7 +18,6 @@ export function pickPluginConfig(pi: any) {
     injectPromptGuidance: cfg.injectPromptGuidance !== false,
     startupHealthcheck: cfg.startupHealthcheck !== false,
     recallEnabled: cfg.recallEnabled !== false,
-    readNodeDisplayMode: cfg.readNodeDisplayMode === 'hard' ? 'hard' : 'soft',
   };
 }
 

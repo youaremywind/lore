@@ -294,22 +294,39 @@ function supportsTools(config: ResolvedViewLlmConfig): boolean {
   return config.provider === 'anthropic' || config.provider === 'openai_compatible' || config.provider === 'openai_responses';
 }
 
+const LLM_MAX_ATTEMPTS = 4;
+
+async function withLlmRetries<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= LLM_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
 export async function generateText(
   config: ResolvedViewLlmConfig,
   messages: ProviderMessage[],
 ): Promise<ProviderTextResponse> {
   const prompt = buildProviderPrompt(messages, [], buildProviderPromptOptions(config));
-  const result = await generateSdkText({
-    model: createLanguageModel(config),
-    system: prompt.system,
-    messages: prompt.messages,
-    temperature: config.temperature,
-    maxOutputTokens: 4096,
-    maxRetries: 0,
-    abortSignal: AbortSignal.timeout(config.timeout_ms),
+  const result = await withLlmRetries(async () => {
+    const sdkResult = await generateSdkText({
+      model: createLanguageModel(config),
+      system: prompt.system,
+      messages: prompt.messages,
+      temperature: config.temperature,
+      maxOutputTokens: 4096,
+      maxRetries: 0,
+      abortSignal: AbortSignal.timeout(config.timeout_ms),
+    });
+    if (!sdkResult.text.trim()) throw new Error('View LLM response missing content');
+    return sdkResult;
   });
   const content = result.text.trim();
-  if (!content) throw new Error('View LLM response missing content');
   return {
     content,
     raw: {
@@ -332,7 +349,7 @@ export async function generateTextWithTools(
   }
 
   const prompt = buildProviderPrompt(messages, toolResults, buildProviderPromptOptions(config));
-  const result = await generateSdkText({
+  const result = await withLlmRetries(() => generateSdkText({
     model: createLanguageModel(config),
     system: prompt.system,
     messages: prompt.messages,
@@ -343,7 +360,7 @@ export async function generateTextWithTools(
     maxOutputTokens: 4096,
     maxRetries: 0,
     abortSignal: AbortSignal.timeout(config.timeout_ms),
-  });
+  }));
 
   return {
     content: result.text.trim() || null,

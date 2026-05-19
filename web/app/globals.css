@@ -29,6 +29,8 @@
     --bg-raised: #2A2A2E;
     --bg-surface: #3A3A3D;
     --bg-inset: #0C0C0E;
+    --dock-bg: rgba(28, 28, 31, 0.68);
+    --dock-bg-mobile: rgba(28, 28, 31, 0.36);
 
     --fill-primary: rgba(120, 120, 128, 0.36);
     --fill-secondary: rgba(120, 120, 128, 0.24);
@@ -84,6 +86,8 @@
     --bg-raised: #F5F5F7;
     --bg-surface: #E9E9EC;
     --bg-inset: #FAFAFC;
+    --dock-bg: rgba(255, 255, 255, 0.68);
+    --dock-bg-mobile: rgba(255, 255, 255, 0.48);
 
     --fill-primary: rgba(120, 120, 128, 0.18);
     --fill-secondary: rgba(120, 120, 128, 0.14);

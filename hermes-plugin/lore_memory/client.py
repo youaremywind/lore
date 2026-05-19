@@ -153,7 +153,6 @@ class LoreClient:
         content: Optional[str] = None,
         priority: Optional[int] = None,
         disclosure: Optional[str] = None,
-        session_id: Optional[str] = None,
         glossary: Optional[List[str]] = None,
         glossary_add: Optional[List[str]] = None,
         glossary_remove: Optional[List[str]] = None
@@ -166,10 +165,6 @@ class LoreClient:
             data["priority"] = priority
         if disclosure is not None:
             data["disclosure"] = disclosure
-        if session_id is not None:
-            data["session_id"] = session_id
-        if glossary is not None:
-            data["glossary"] = glossary
         if glossary_add:
             data["glossary_add"] = glossary_add
         if glossary_remove:
@@ -178,11 +173,9 @@ class LoreClient:
         params = {"domain": domain, "path": path}
         return self._request("PUT", "/browse/node", params=params, data=data) or {}
     
-    def delete_node(self, domain: str, path: str, session_id: Optional[str] = None) -> Dict:
+    def delete_node(self, domain: str, path: str) -> Dict:
         """Delete a memory node"""
         params = {"domain": domain, "path": path}
-        if session_id is not None:
-            params["session_id"] = session_id
         return self._request("DELETE", "/browse/node", params=params) or {}
     
     def move_node(self, old_uri: str, new_uri: str) -> Dict:
@@ -219,7 +212,32 @@ class LoreClient:
         if session_id:
             data["session_id"] = session_id
         return self._request("POST", "/browse/recall", data=data) or {}
-    
+
+    # ---- Bridge Lifecycle ----
+
+    def bridge_startup(
+        self,
+        session_id: str,
+        channel: str,
+        project: Dict,
+        include_guidance: bool = True,
+    ) -> Dict:
+        """Load unified startup context from the Lore bridge."""
+        data = {
+            "session_id": session_id,
+            "channel": channel,
+            "project": project,
+            "include_guidance": include_guidance,
+        }
+        return self._request("POST", "/bridge/startup", data=data) or {}
+
+    def bridge_recall(self, session_id: str, prompt: str) -> Dict:
+        """Load formatted prompt recall context from the Lore bridge."""
+        return self._request("POST", "/bridge/recall", data={
+            "session_id": session_id,
+            "prompt": prompt,
+        }) or {}
+
     # ---- Domains ----
     
     def list_domains(self) -> List[Dict]:
@@ -237,34 +255,6 @@ class LoreClient:
         """Remove a glossary keyword from a node"""
         data = {"keyword": keyword, "node_uuid": node_uuid}
         return self._request("DELETE", "/browse/glossary", data=data) or {}
-    
-    # ---- Session Tracking ----
-    
-    def mark_session_read(
-        self,
-        session_id: str,
-        uri: str,
-        node_uuid: Optional[str] = None,
-        session_key: Optional[str] = None,
-        source: str = "tool"
-    ) -> Dict:
-        """Mark a node as read in a session"""
-        data = {"session_id": session_id, "uri": uri, "source": source}
-        if node_uuid:
-            data["node_uuid"] = node_uuid
-        if session_key:
-            data["session_key"] = session_key
-        return self._request("POST", "/browse/session/read", data=data) or {}
-    
-    def list_session_reads(self, session_id: str) -> List[Dict]:
-        """List all read nodes in a session"""
-        params = {"session_id": session_id}
-        return self._request("GET", "/browse/session/read", params=params) or []
-    
-    def clear_session_reads(self, session_id: str) -> Dict:
-        """Clear session read tracking"""
-        params = {"session_id": session_id}
-        return self._request("DELETE", "/browse/session/read", params=params) or {}
     
     def mark_recall_used(
         self,

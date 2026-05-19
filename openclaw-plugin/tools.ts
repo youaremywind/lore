@@ -2,7 +2,6 @@ import { Type } from "@sinclair/typebox";
 import { textResult, fetchJson, hasRecallConfig } from "./api";
 import { resolveMemoryLocator, splitParentPathAndTitle, trimSlashes } from "./uri";
 import { formatNode, formatBootView, normalizeSearchResults, normalizeKeywordList } from "./formatters";
-import { markSessionRead } from "./hooks";
 
 // Shared TypeBox schemas for tool parameters
 const EmptySchema = Type.Object({});
@@ -11,20 +10,14 @@ const UriParam = Type.String({
   description: "Full memory URI, such as core://soul. Use core:// or project:// to browse a domain root; bare words are paths in the default domain.",
 });
 
+const GetNodeDescription = "Open a memory node. REQUIRED when opening a URI from a <recall>: copy the exact session_id and query_id from that <recall> tag.";
+
 const SessionIdParam = Type.String({
-  description: "Session identifier from the <recall session_id=\"...\"> tag. Enables per-session read tracking and recall suppression.",
+  description: "REQUIRED when the URI came from <recall>: copy the exact session_id from that <recall> tag.",
 });
 
 const QueryIdParam = Type.String({
-  description: "Query identifier from the <recall query_id=\"...\"> tag. Enables recall usage tracking.",
-});
-
-const InternalSessionId = Type.String({
-  description: "Internal session tracking field.",
-});
-
-const InternalSessionKey = Type.String({
-  description: "Internal session tracking field.",
+  description: "REQUIRED when the URI came from <recall>: copy the exact query_id from that <recall> tag.",
 });
 
 export function registerTools(api: any, pluginCfg: any) {
@@ -63,19 +56,16 @@ export function registerTools(api: any, pluginCfg: any) {
   api.registerTool({
     name: "lore_get_node",
     label: "Lore get node",
-    description: "Open a memory node to inspect its full content, metadata, and nearby structure. Pass session_id and query_id from the <recall> tag to enable per-session read tracking and recall usage marking.",
+    description: GetNodeDescription,
     parameters: Type.Object({
       uri: UriParam,
       nav_only: Type.Optional(Type.Boolean({ description: "If true, skip expensive glossary processing." })),
       session_id: Type.Optional(SessionIdParam),
       query_id: Type.Optional(QueryIdParam),
-      __session_id: Type.Optional(InternalSessionId),
-      __session_key: Type.Optional(InternalSessionKey),
     }),
     async execute(_id: any, params: any) {
       const navOnly = params?.nav_only === true;
-      const sessionId = (typeof params?.session_id === "string" && params.session_id.trim()) || (typeof params?.__session_id === "string" && params.__session_id.trim()) || "";
-      const sessionKey = typeof params?.__session_key === "string" && params.__session_key.trim() ? params.__session_key.trim() : "";
+      const sessionId = typeof params?.session_id === "string" && params.session_id.trim() ? params.session_id.trim() : "";
       const queryId = typeof params?.query_id === "string" && params.query_id.trim() ? params.query_id.trim() : "";
       let domain = pluginCfg.defaultDomain;
       let path = "";
@@ -84,15 +74,6 @@ export function registerTools(api: any, pluginCfg: any) {
         const qs = new URLSearchParams({ domain, path, nav_only: String(navOnly) });
         const data = await fetchJson(pluginCfg, `/browse/node?${qs.toString()}`, { method: "GET" });
         const node = data?.node || {};
-        if (sessionId && node?.uri) {
-          await markSessionRead(pluginCfg, {
-            sessionId,
-            sessionKey,
-            uri: node.uri,
-            nodeUuid: node.node_uuid,
-            source: "tool:lore_get_node",
-          });
-        }
         if (queryId && node?.uri) {
           try {
             await fetchJson(pluginCfg, "/browse/recall/usage", {
@@ -253,14 +234,12 @@ export function registerTools(api: any, pluginCfg: any) {
   api.registerTool({
     name: "lore_update_node",
     label: "Lore update node",
-    description: "Revise an existing long-term memory node. Any provided content, metadata, and glossary fields are applied as one node update event; omitted fields are left unchanged.",
+    description: "Revise an existing long-term memory node. Omitted content, metadata, and glossary mutation fields are left unchanged.",
     parameters: Type.Object({
       uri: UriParam,
       content: Type.Optional(Type.String({ description: "New content to replace the existing content; omit to leave content unchanged." })),
       priority: Type.Optional(Type.Integer({ minimum: 0, description: "New priority level; omit to leave priority unchanged." })),
       disclosure: Type.Optional(Type.String({ description: "New disclosure / trigger condition; omit to leave disclosure unchanged." })),
-      session_id: Type.Optional(Type.String({ description: "Session ID for policy validation (read-before-update check)." })),
-      glossary: Type.Optional(Type.Array(Type.String({ description: "Search keyword." }), { description: "Full replacement list for this node glossary. Omit to leave unchanged; pass [] to clear." })),
       glossary_add: Type.Optional(Type.Array(Type.String({ description: "Search keyword." }), { description: "Keywords to add as part of this same node update event." })),
       glossary_remove: Type.Optional(Type.Array(Type.String({ description: "Search keyword." }), { description: "Keywords to remove as part of this same node update event." })),
     }),
@@ -268,12 +247,9 @@ export function registerTools(api: any, pluginCfg: any) {
       const body: any = {};
       const glossaryAdd = normalizeKeywordList(params?.glossary_add);
       const glossaryRemove = normalizeKeywordList(params?.glossary_remove);
-      const glossary = Array.isArray(params?.glossary) ? normalizeKeywordList(params.glossary) : undefined;
       if (typeof params?.content === "string") body.content = params.content;
       if (Number.isFinite(params?.priority)) body.priority = params.priority;
       if (typeof params?.disclosure === "string") body.disclosure = params.disclosure;
-      if (typeof params?.session_id === "string" && params.session_id.trim()) body.session_id = params.session_id.trim();
-      if (glossary) body.glossary = glossary;
       if (glossaryAdd.length > 0) body.glossary_add = glossaryAdd;
       if (glossaryRemove.length > 0) body.glossary_remove = glossaryRemove;
       let domain = pluginCfg.defaultDomain;
@@ -283,11 +259,10 @@ export function registerTools(api: any, pluginCfg: any) {
         const qs = new URLSearchParams({ domain, path });
         const data = await fetchJson(pluginCfg, `/browse/node?${qs.toString()}`, { method: "PUT", body: JSON.stringify(body) });
         const suffixParts: string[] = [];
-        if (glossary) suffixParts.push(`glossary= ${glossary.join(", ")}`);
         if (glossaryAdd.length > 0) suffixParts.push(`glossary+ ${glossaryAdd.join(", ")}`);
         if (glossaryRemove.length > 0) suffixParts.push(`glossary- ${glossaryRemove.join(", ")}`);
         const suffix = suffixParts.length > 0 ? `\n${suffixParts.join("\n")}` : "";
-        return textResult(`Updated ${data?.uri || `${domain}://${path}`}${suffix}`, { ok: true, result: data, glossary, glossary_add: glossaryAdd, glossary_remove: glossaryRemove });
+        return textResult(`Updated ${data?.uri || `${domain}://${path}`}${suffix}`, { ok: true, result: data, glossary_add: glossaryAdd, glossary_remove: glossaryRemove });
       } catch (error: any) {
         return textResult(`Lore update failed: ${error.message}`, { ok: false, error: error.message, domain, path, glossary_add: glossaryAdd, glossary_remove: glossaryRemove });
       }
@@ -300,7 +275,6 @@ export function registerTools(api: any, pluginCfg: any) {
     description: "Remove a memory path that is obsolete, duplicated, or no longer wanted.",
     parameters: Type.Object({
       uri: UriParam,
-      session_id: Type.Optional(Type.String({ description: "Session ID for policy validation (read-before-delete check)." })),
     }),
     async execute(_id: any, params: any) {
       let domain = pluginCfg.defaultDomain;
@@ -308,9 +282,6 @@ export function registerTools(api: any, pluginCfg: any) {
       try {
         ({ domain, path } = resolveMemoryLocator(params, { defaultDomain: pluginCfg.defaultDomain, pathKey: "__unused_path", allowEmptyPath: false, label: "uri" }));
         const qs = new URLSearchParams({ domain, path });
-        if (typeof params?.session_id === "string" && params.session_id.trim()) {
-          qs.set("session_id", params.session_id.trim());
-        }
         const data = await fetchJson(pluginCfg, `/browse/node?${qs.toString()}`, { method: "DELETE" });
         const deletedUri = String(data?.deleted_uri || data?.uri || `${domain}://${path}`).trim();
         const canonicalUri = String(data?.uri || deletedUri).trim();
@@ -346,44 +317,4 @@ export function registerTools(api: any, pluginCfg: any) {
     },
   });
 
-  api.registerTool({
-    name: "lore_list_session_reads",
-    label: "Lore list session reads",
-    description: "Show which memory nodes have already been opened in this session.",
-    parameters: Type.Object({
-      session_id: Type.String({ description: "Session identifier to query." }),
-    }),
-    async execute(_id: any, params: any) {
-      const sessionId = String(params?.session_id || "").trim();
-      try {
-        const qs = new URLSearchParams({ session_id: sessionId });
-        const data = await fetchJson(pluginCfg, `/browse/session/read?${qs.toString()}`, { method: "GET" });
-        const text = Array.isArray(data) && data.length > 0
-          ? data.map((item: any) => `- ${item.uri} (${item.read_count})`).join("\n")
-          : "No read nodes tracked for this session.";
-        return textResult(text, { ok: true, reads: data });
-      } catch (error: any) {
-        return textResult(`Lore session reads failed: ${error.message}`, { ok: false, error: error.message });
-      }
-    },
-  });
-
-  api.registerTool({
-    name: "lore_clear_session_reads",
-    label: "Lore clear session reads",
-    description: "Reset per-session memory read tracking.",
-    parameters: Type.Object({
-      session_id: Type.String({ description: "Session identifier to clear." }),
-    }),
-    async execute(_id: any, params: any) {
-      const sessionId = String(params?.session_id || "").trim();
-      try {
-        const qs = new URLSearchParams({ session_id: sessionId });
-        const data = await fetchJson(pluginCfg, `/browse/session/read?${qs.toString()}`, { method: "DELETE" });
-        return textResult(`Cleared Lore read tracking for ${sessionId}`, { ok: true, result: data });
-      } catch (error: any) {
-        return textResult(`Lore clear session reads failed: ${error.message}`, { ok: false, error: error.message });
-      }
-    },
-  });
 }

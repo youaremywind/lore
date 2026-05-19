@@ -46,6 +46,11 @@ describe('settingsSchema', () => {
       type: 'boolean',
       default: true,
     });
+    expect(SCHEMA_BY_KEY.get('dream.auto_approve_changes')).toMatchObject({
+      section: 'dream',
+      type: 'boolean',
+      default: false,
+    });
     expect(SECTIONS.some((section) => section.id === 'cache')).toBe(true);
     expect(SCHEMA_BY_KEY.get('recall.safety.max_query_chars')).toMatchObject({
       section: 'recall_safety',

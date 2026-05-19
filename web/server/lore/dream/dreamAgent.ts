@@ -51,7 +51,7 @@ export type DreamPhase = 'diagnose' | 'plan' | 'preflight' | 'apply' | 'audit';
 
 const DREAM_PHASE_TOOLS: Record<DreamPhase, string[]> = {
   diagnose: [
-    'get_today_recall_metadata',
+    'get_recall_metadata',
     'get_node',
     'search',
     'list_domains',
@@ -69,7 +69,7 @@ const DREAM_PHASE_TOOLS: Record<DreamPhase, string[]> = {
     'inspect_memory_node_for_dream',
   ],
   plan: [
-    'get_today_recall_metadata',
+    'get_recall_metadata',
     'get_node',
     'search',
     'get_query_recall_detail',
@@ -151,7 +151,7 @@ export function buildDreamTools(): ToolDefinition[] {
     { name: 'get_node', description: 'Read a memory node by URI', parameters: { type: 'object', properties: { uri: { type: 'string', description: 'Memory URI e.g. core://soul' } }, required: ['uri'] } },
     { name: 'search', description: 'Search memories by keyword', parameters: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'integer' } }, required: ['query'] } },
     { name: 'list_domains', description: 'List all memory domains', parameters: { type: 'object', properties: {} } },
-    { name: 'get_today_recall_metadata', description: 'Return bounded raw recall query metadata for one local date. No heuristic flags or algorithmic analysis.', parameters: { type: 'object', properties: { date: { type: 'string' }, limit: { type: 'integer' }, offset: { type: 'integer' } } } },
+    { name: 'get_recall_metadata', description: 'Return bounded raw recall query metadata for one local date, or for the last N days when days is set. No heuristic flags or algorithmic analysis.', parameters: { type: 'object', properties: { date: { type: 'string' }, days: { type: 'integer', description: 'Look back N days instead of a single date. Takes precedence over date.' }, limit: { type: 'integer' }, offset: { type: 'integer' } } } },
     { name: 'get_query_recall_detail', description: 'Inspect one problematic query by query_id or query_text, returning query counts and shown node URIs only', parameters: { type: 'object', properties: { query_id: { type: 'string' }, query_text: { type: 'string' }, days: { type: 'integer' }, limit: { type: 'integer' } } } },
     { name: 'get_query_candidates', description: 'Inspect candidate-level rollups for one recall query; use this after get_query_recall_detail when shown nodes are not enough', parameters: { type: 'object', properties: { query_id: { type: 'string' }, limit: { type: 'integer' }, selected_only: { type: 'boolean' }, used_only: { type: 'boolean' } }, required: ['query_id'] } },
     { name: 'get_query_path_breakdown', description: 'Inspect retrieval path and view-type aggregates for one recall query', parameters: { type: 'object', properties: { query_id: { type: 'string' } }, required: ['query_id'] } },
@@ -167,7 +167,7 @@ export function buildDreamTools(): ToolDefinition[] {
     { name: 'inspect_memory_node_for_dream', description: 'Return compact node content, disclosure, priority, glossary, views, parent, siblings, children, write history, and size metrics for Dream maintenance decisions.', parameters: { type: 'object', properties: { uri: { type: 'string' }, siblings_limit: { type: 'integer' }, children_limit: { type: 'integer' }, views_limit: { type: 'integer' }, history_limit: { type: 'integer' } }, required: ['uri'] } },
     { name: 'validate_memory_change', description: 'Dry-run a proposed memory change and return warnings before Dream writes. This does not mutate memory.', parameters: { type: 'object', properties: { action: { type: 'string' }, uri: { type: 'string' }, new_uri: { type: 'string' }, content: { type: 'string' }, disclosure: { type: 'string' }, priority: { type: 'integer' }, glossary: { type: 'array', items: { type: 'string' } } }, required: ['action'] } },
     { name: 'create_node', description: 'Create a new memory node; glossary keywords are written with the node create event.', parameters: { type: 'object', properties: { uri: { type: 'string' }, content: { type: 'string' }, priority: { type: 'integer' }, disclosure: { type: 'string' }, glossary: { type: 'array', items: { type: 'string' }, description: 'Initial glossary keywords for retrieval.' } }, required: ['content', 'priority'] } },
-    { name: 'update_node', description: 'Update an existing memory node. Provided content, metadata, and glossary fields are applied as one node update event; omitted fields stay unchanged.', parameters: { type: 'object', properties: { uri: { type: 'string' }, content: { type: 'string', description: 'New content; omit to leave unchanged.' }, priority: { type: 'integer', description: 'New priority; omit to leave unchanged.' }, disclosure: { type: 'string', description: 'New disclosure; omit to leave unchanged.' }, glossary: { type: 'array', items: { type: 'string' }, description: 'Full replacement glossary. Omit to leave unchanged; pass [] to clear.' }, glossary_add: { type: 'array', items: { type: 'string' }, description: 'Keywords to add in this same node update event.' }, glossary_remove: { type: 'array', items: { type: 'string' }, description: 'Keywords to remove in this same node update event.' } }, required: ['uri'] } },
+    { name: 'update_node', description: 'Update an existing memory node. Omitted content, metadata, and glossary mutation fields stay unchanged.', parameters: { type: 'object', properties: { uri: { type: 'string' }, content: { type: 'string', description: 'New content; omit to leave unchanged.' }, priority: { type: 'integer', description: 'New priority; omit to leave unchanged.' }, disclosure: { type: 'string', description: 'New disclosure; omit to leave unchanged.' }, glossary_add: { type: 'array', items: { type: 'string' }, description: 'Keywords to add in this same node update event.' }, glossary_remove: { type: 'array', items: { type: 'string' }, description: 'Keywords to remove in this same node update event.' } }, required: ['uri'] } },
     { name: 'delete_node', description: 'Delete a memory node', parameters: { type: 'object', properties: { uri: { type: 'string' } }, required: ['uri'] } },
     { name: 'move_node', description: 'Move/rename a memory node to a new URI', parameters: { type: 'object', properties: { old_uri: { type: 'string' }, new_uri: { type: 'string' } }, required: ['old_uri', 'new_uri'] } },
   ];
@@ -222,9 +222,7 @@ export function loadGuidanceFile(): string {
       .replace(/lore_update_node/g, 'update_node')
       .replace(/lore_delete_node/g, 'delete_node')
       .replace(/lore_move_node/g, 'move_node')
-      .replace(/lore_list_domains/g, 'list_domains')
-      .replace(/lore_list_session_reads/g, 'session reads')
-      .replace(/lore_clear_session_reads/g, 'clear session');
+      .replace(/lore_list_domains/g, 'list_domains');
     return content;
   } catch {
     return '';

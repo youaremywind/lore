@@ -68,9 +68,8 @@ function timeoutPayload(timeoutMs: number, body: Record<string, unknown>, maxQue
     query: '',
     candidates: [],
     items: [],
-    suppressed: { boot: 0, read: 0, score: 0 },
+    suppressed: { boot: 0, score: 0 },
     boot_uris: [],
-    read_node_display_mode: 'soft',
     retrieval_meta: retrievalMeta,
     event_log: { enabled: false },
   };

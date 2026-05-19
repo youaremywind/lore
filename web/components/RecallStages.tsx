@@ -159,7 +159,6 @@ interface RetrievalMeta {
 
 interface SuppressionData {
   boot?: number;
-  read?: number;
   score?: number;
 }
 
@@ -200,7 +199,6 @@ interface RecallStagesProps {
   maxDisplayItems?: number | null;
   scorePrecision?: number;
   sessionId?: string | null;
-  readNodeDisplayMode?: string | null;
   initialStage?: string;
   showClientSource?: boolean;
   hideMergedBreakdownColumn?: boolean;
@@ -213,7 +211,6 @@ export default function RecallStages({
   maxDisplayItems = null,
   scorePrecision = 2,
   sessionId = null,
-  readNodeDisplayMode = null,
   initialStage = 'merge',
   showClientSource = false,
   hideMergedBreakdownColumn = false,
@@ -226,7 +223,7 @@ export default function RecallStages({
   const finalItems = safeArray<RecallRow>(data?.items);
   const topMerged = mergedCandidates[0] || null;
   const topFinal = finalItems[0] || null;
-  const suppression: SuppressionData = data?.suppressed || { boot: 0, read: 0, score: 0 };
+  const suppression: SuppressionData = data?.suppressed || { boot: 0, score: 0 };
   const retrievalMeta: RetrievalMeta = data?.retrieval_meta || {};
   const selectedCandidate = mergedCandidates.find((r) => r?.uri === selectedMergedUri) || null;
 
@@ -334,7 +331,6 @@ export default function RecallStages({
                 {sessionId && <Badge tone="blue">{t('Session label')} · {sessionId}</Badge>}
                 {minDisplayScore != null && <Badge tone="orange">{t('Threshold label')} · {fmt(minDisplayScore, 2)}</Badge>}
                 {maxDisplayItems != null && <Badge tone="green">{t('Max label')} · {maxDisplayItems}</Badge>}
-                {readNodeDisplayMode && <Badge>{t('Read label')} · {t(String(readNodeDisplayMode))}</Badge>}
               </div>
             </div>
             <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">
@@ -430,7 +426,7 @@ export default function RecallStages({
               {topFinal && <span className="text-txt-tertiary">· {t('Top label')} {fmt(topFinal.score, 3)}</span>}
               {suppression && (
                 <span className="ml-auto text-txt-tertiary">
-                  {t('Suppressed')} · {t('Suppressed by boot')} {suppression.boot ?? 0} · {t('Suppressed by read')} {suppression.read ?? 0} · {t('Suppressed by score')} {suppression.score ?? 0}
+                  {t('Suppressed')} · {t('Suppressed by boot')} {suppression.boot ?? 0} · {t('Suppressed by score')} {suppression.score ?? 0}
                 </span>
               )}
             </div>

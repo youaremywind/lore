@@ -24,13 +24,17 @@ function makePluginCfg(overrides: any = {}) {
   };
 }
 
+const RECALL_GET_NODE_DESCRIPTION = 'Open a memory node. REQUIRED when opening a URI from a <recall>: copy the exact session_id and query_id from that <recall> tag.';
+const RECALL_SESSION_ID_DESCRIPTION = 'REQUIRED when the URI came from <recall>: copy the exact session_id from that <recall> tag.';
+const RECALL_QUERY_ID_DESCRIPTION = 'REQUIRED when the URI came from <recall>: copy the exact query_id from that <recall> tag.';
+
 describe('registerTools — tool registration', () => {
-  it('registers all 11 tools', () => {
+  it('registers all 9 tools', () => {
     const api = makeMockApi();
     const cfg = makePluginCfg();
     registerTools(api as any, cfg);
     const names = Object.keys(api.tools);
-    expect(names).toHaveLength(11);
+    expect(names).toHaveLength(9);
     expect(names).toContain('lore_status');
     expect(names).toContain('lore_boot');
     expect(names).toContain('lore_get_node');
@@ -40,8 +44,8 @@ describe('registerTools — tool registration', () => {
     expect(names).toContain('lore_update_node');
     expect(names).toContain('lore_delete_node');
     expect(names).toContain('lore_move_node');
-    expect(names).toContain('lore_list_session_reads');
-    expect(names).toContain('lore_clear_session_reads');
+    expect(names).not.toContain('lore_list_session_reads');
+    expect(names).not.toContain('lore_clear_session_reads');
   });
 
   it('each tool has name, description, and execute', () => {
@@ -67,6 +71,19 @@ describe('tool parameter schemas', () => {
     expect(tools.lore_get_node.parameters.required).toContain('uri');
   });
 
+  it('lore_get_node exposes explicit recall identifiers without internal params', () => {
+    const tool = tools.lore_get_node;
+    const props = tool.parameters.properties;
+
+    expect(tool.description).toBe(RECALL_GET_NODE_DESCRIPTION);
+    expect(props.session_id.description).toBe(RECALL_SESSION_ID_DESCRIPTION);
+    expect(props.query_id.description).toBe(RECALL_QUERY_ID_DESCRIPTION);
+    expect(props.session_id).toBeDefined();
+    expect(props.query_id).toBeDefined();
+    expect(props.__session_id).toBeUndefined();
+    expect(props.__session_key).toBeUndefined();
+  });
+
   it('lore_search exposes content_limit', () => {
     expect(tools.lore_search.parameters.properties.content_limit).toBeDefined();
   });
@@ -82,6 +99,14 @@ describe('tool parameter schemas', () => {
     expect(tools.lore_update_node.parameters.required).toContain('uri');
   });
 
+  it('lore_update_node exposes glossary mutations without full replacement', () => {
+    const props = tools.lore_update_node.parameters.properties;
+    expect(props.glossary).toBeUndefined();
+    expect(props.glossary_add).toBeDefined();
+    expect(props.glossary_remove).toBeDefined();
+    expect(tools.lore_update_node.description).not.toContain('glossary fields');
+  });
+
   it('lore_delete_node requires uri', () => {
     expect(tools.lore_delete_node.parameters.required).toContain('uri');
   });
@@ -92,13 +117,6 @@ describe('tool parameter schemas', () => {
     expect(req).toContain('new_uri');
   });
 
-  it('lore_list_session_reads requires session_id', () => {
-    expect(tools.lore_list_session_reads.parameters.required).toContain('session_id');
-  });
-
-  it('lore_clear_session_reads requires session_id', () => {
-    expect(tools.lore_clear_session_reads.parameters.required).toContain('session_id');
-  });
 
   it('lore_status has no required params', () => {
     expect(tools.lore_status.parameters.required).toBeUndefined();
@@ -198,6 +216,35 @@ describe('tool response formatting', () => {
     expect((fetch as any).mock.calls[0][0]).toBe('http://localhost:18901/api/browse/node?domain=project&path=&nav_only=true&client_type=openclaw');
   });
 
+
+
+  it('lore_get_node records recall usage without session read tracking', async () => {
+    (fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => JSON.stringify({ node: { uri: 'core://agent', node_uuid: 'node-1', content: 'Agent' }, children: [] }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => JSON.stringify({ ok: true }),
+      });
+
+    const result = await tools.lore_get_node.execute(null, {
+      uri: 'core://agent',
+      session_id: 'sess-1',
+      query_id: 'query-1',
+    });
+
+    const urls = (fetch as any).mock.calls.map((call: any[]) => String(call[0]));
+    expect(result.details.ok).toBe(true);
+    expect(urls.some((url: string) => url.includes('/browse/recall/usage'))).toBe(true);
+    expect(urls.some((url: string) => url.includes('/browse/session/read'))).toBe(false);
+  });
+
   it('lore_delete_node returns deleted path on success', async () => {
     mockFetch({ deleted: true });
     const result = await tools.lore_delete_node.execute(null, { uri: 'core://test/node' });
@@ -256,7 +303,10 @@ describe('tool response formatting', () => {
     expect(result.content[0].text).toContain('Updated core://agent/profile-renamed');
     expect((fetch as any).mock.calls).toHaveLength(1);
     expect((fetch as any).mock.calls.map((call: any[]) => call[1].method)).not.toContain('GET');
-    expect(JSON.parse((fetch as any).mock.calls[0][1].body)).toMatchObject({ content: 'updated', glossary: ['fresh'], glossary_add: ['memory'] });
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body);
+    expect(body).toMatchObject({ content: 'updated', glossary_add: ['memory'] });
+    expect(body).not.toHaveProperty('glossary');
+    expect(result.content[0].text).not.toContain('glossary=');
   });
 
   it('lore_delete_node prefers canonical delete receipts', async () => {
@@ -273,18 +323,6 @@ describe('tool response formatting', () => {
     expect(result.content[0].text).toContain('Moved core://original → core://canonical/moved');
   });
 
-  it('lore_list_session_reads shows empty message for no reads', async () => {
-    mockFetch([]);
-    const result = await tools.lore_list_session_reads.execute(null, { session_id: 'sess-1' });
-    expect(result.content[0].text).toContain('No read nodes tracked');
-  });
-
-  it('lore_clear_session_reads confirms cleared session', async () => {
-    mockFetch({ ok: true });
-    const result = await tools.lore_clear_session_reads.execute(null, { session_id: 'sess-1' });
-    expect(result.details.ok).toBe(true);
-    expect(result.content[0].text).toContain('sess-1');
-  });
 
   it('lore_search falls back to GET when recallEnabled=false', async () => {
     const api2 = makeMockApi();

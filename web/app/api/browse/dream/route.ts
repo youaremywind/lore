@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireApiAuth, requireBearerAuth } from '../../../../server/auth';
 import { jsonContractError } from '../../../../server/lore/contracts';
-import { getDreamDiary, getDreamEntry, getDreamConfig, updateDreamConfig, rollbackDream } from '../../../../server/lore/dream/dreamDiary';
+import { getDreamDiary, getDreamEntry, getDreamConfig, updateDreamConfig, reviewDreamChange, rollbackDream } from '../../../../server/lore/dream/dreamDiary';
 import { registerBuiltInJobs } from '../../../../server/lore/jobs/jobDefinitions';
 import { runJobNowInBackground } from '../../../../server/lore/jobs/registry';
 import {
@@ -111,6 +111,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (action === 'config') {
       return NextResponse.json(await updateDreamConfig(body));
+    }
+    if (action === 'review_change') {
+      return NextResponse.json(await reviewDreamChange({ eventId: body.event_id, status: body.status }));
     }
     if (action === 'rollback') {
       return NextResponse.json(await rollbackDream(body.id));

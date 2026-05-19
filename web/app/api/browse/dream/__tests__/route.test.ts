@@ -9,6 +9,7 @@ vi.mock('../../../../../server/lore/dream/dreamDiary', () => ({
   getDreamEntry: vi.fn(),
   getDreamConfig: vi.fn(),
   updateDreamConfig: vi.fn(),
+  reviewDreamChange: vi.fn(),
   rollbackDream: vi.fn(),
 }));
 vi.mock('../../../../../server/lore/jobs/registry', () => ({
@@ -31,6 +32,7 @@ import {
   getDreamEntry,
   getDreamConfig,
   updateDreamConfig,
+  reviewDreamChange,
   rollbackDream,
 } from '../../../../../server/lore/dream/dreamDiary';
 import { registerBuiltInJobs } from '../../../../../server/lore/jobs/jobDefinitions';
@@ -45,6 +47,7 @@ const mockGetDreamDiary = vi.mocked(getDreamDiary);
 const mockGetDreamEntry = vi.mocked(getDreamEntry);
 const mockGetDreamConfig = vi.mocked(getDreamConfig);
 const mockUpdateDreamConfig = vi.mocked(updateDreamConfig);
+const mockReviewDreamChange = vi.mocked(reviewDreamChange);
 const mockRollbackDream = vi.mocked(rollbackDream);
 
 describe('/api/browse/dream route', () => {
@@ -209,5 +212,20 @@ describe('/api/browse/dream route', () => {
     expect(response.status).toBe(200);
     expect(body.enabled).toBe(false);
     expect(body.schedule_hour).toBe(5);
+  });
+
+  it('reviews a dream memory change from review_change POST', async () => {
+    mockReviewDreamChange.mockResolvedValueOnce({ event_id: 22, status: 'dismissed', reviewed_at: '2024-01-01T00:02:00Z' } as any);
+
+    const response = await POST(new Request('http://localhost/api/browse/dream', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'review_change', event_id: 22, status: 'dismissed' }),
+    }) as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mockReviewDreamChange).toHaveBeenCalledWith({ eventId: 22, status: 'dismissed' });
+    expect(body).toEqual({ event_id: 22, status: 'dismissed', reviewed_at: '2024-01-01T00:02:00Z' });
   });
 });

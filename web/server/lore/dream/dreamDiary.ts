@@ -37,11 +37,14 @@ interface DiaryEntry {
   details?: Record<string, unknown>;
   workflow_events?: DreamWorkflowEvent[];
   memory_changes?: Array<{
+    id: number;
     type: string;
     uri: string;
     before: Record<string, unknown> | null;
     after: Record<string, unknown> | null;
     at: string | null;
+    review_status: DreamChangeReviewStatus;
+    reviewed_at: string | null;
   }>;
 }
 
@@ -59,6 +62,72 @@ interface DreamResult {
   narrative: string;
   raw_narrative: string;
   poetic_narrative: string;
+}
+
+type DreamChangeReviewStatus = 'pending' | 'approved' | 'dismissed';
+
+const DREAM_CHANGE_REVIEW_STATUSES = new Set<DreamChangeReviewStatus>(['pending', 'approved', 'dismissed']);
+
+function normalizeDreamChangeReviewStatus(status: unknown): DreamChangeReviewStatus {
+  const value = String(status || '').trim();
+  if (DREAM_CHANGE_REVIEW_STATUSES.has(value as DreamChangeReviewStatus)) {
+    return value as DreamChangeReviewStatus;
+  }
+  throw Object.assign(new Error(`Unsupported dream review status: ${value || '(empty)'}`), { status: 400 });
+}
+
+function formatReviewDate(value: unknown): string | null {
+  if (!value) return null;
+  try {
+    return new Date(value as string).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function dreamReviewFromDetails(details: unknown): { status: DreamChangeReviewStatus; reviewed_at: string | null } {
+  const record = details && typeof details === 'object' ? details as Record<string, unknown> : {};
+  const review = record.dream_review && typeof record.dream_review === 'object'
+    ? record.dream_review as Record<string, unknown>
+    : {};
+  const rawStatus = String(review.status || '').trim();
+  const status = DREAM_CHANGE_REVIEW_STATUSES.has(rawStatus as DreamChangeReviewStatus)
+    ? rawStatus as DreamChangeReviewStatus
+    : 'pending';
+  return {
+    status,
+    reviewed_at: formatReviewDate(review.reviewed_at),
+  };
+}
+
+function buildDreamReviewPayload(status: DreamChangeReviewStatus, source: 'web' | 'auto' | 'system'): Record<string, unknown> {
+  return {
+    status,
+    source,
+    reviewed_at: new Date().toISOString(),
+  };
+}
+
+async function dreamAutoApproveChanges(): Promise<boolean> {
+  try {
+    const settings = await getSettingsBatch(['dream.auto_approve_changes']);
+    return settings?.['dream.auto_approve_changes'] === true;
+  } catch {
+    return false;
+  }
+}
+
+async function initializeDreamChangeReviews(diaryId: number, autoApprove: boolean): Promise<void> {
+  const payload = buildDreamReviewPayload(autoApprove ? 'approved' : 'pending', autoApprove ? 'auto' : 'system');
+  await sql(
+    `UPDATE memory_events
+     SET details = jsonb_set(COALESCE(details, '{}'::jsonb), '{dream_review}', $2::jsonb, true)
+     WHERE source = 'dream:auto'
+       AND created_at >= (SELECT started_at FROM dream_diary WHERE id = $1)
+       AND created_at <= COALESCE((SELECT completed_at FROM dream_diary WHERE id = $1), NOW())
+       AND NOT (COALESCE(details, '{}'::jsonb) ? 'dream_review')`,
+    [diaryId, JSON.stringify(payload)],
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +162,7 @@ export async function runDream(): Promise<DreamResult> {
     const [boot, recallStats, recallReview, writeStats] = await Promise.all([
       bootView({ client_type: 'admin' }),
       getRecallStats({ days: 1, limit: 20 }),
-      getDreamRecallReview({ limit: 100 }),
+      getDreamRecallReview({ days: 1, limit: 100 }),
       getWriteEventStats({ days: 1, limit: 20 }),
     ]);
     const recallReviewRecord = recallReview as unknown as Record<string, unknown>;
@@ -176,20 +245,20 @@ export async function runDream(): Promise<DreamResult> {
     let poeticNarrative = rawNarrative;
     if (llmConfig) {
       currentPhase = 'poetic_rewrite';
-      console.log('[dream] step 3: poetic diary rewrite');
-      await appendDreamWorkflowEvent(diaryId, 'phase_started', { phase: 'poetic_rewrite', label: 'Poetic diary rewrite' });
+      console.log('[dream] step 3: diary rewrite');
+      await appendDreamWorkflowEvent(diaryId, 'phase_started', { phase: 'poetic_rewrite', label: 'Diary' });
       try {
         poeticNarrative = await rewriteDreamNarrative(llmConfig, rawNarrative);
         await appendDreamWorkflowEvent(diaryId, 'phase_completed', {
           phase: 'poetic_rewrite',
-          label: 'Poetic diary rewrite',
+          label: 'Diary',
           summary: { fallback: false },
         });
       } catch (rewriteError: unknown) {
         poeticNarrative = rawNarrative;
         await appendDreamWorkflowEvent(diaryId, 'phase_completed', {
           phase: 'poetic_rewrite',
-          label: 'Poetic diary rewrite',
+          label: 'Diary',
           summary: { fallback: true, error: (rewriteError as Error).message },
         });
       }
@@ -278,6 +347,7 @@ export async function runDream(): Promise<DreamResult> {
         },
       })],
     );
+    await initializeDreamChangeReviews(diaryId, await dreamAutoApproveChanges());
     await appendDreamWorkflowEvent(diaryId, 'run_completed', {
       duration_ms: durationMs,
       summary,
@@ -348,7 +418,7 @@ export async function getDreamEntry(id: number | string): Promise<DiaryEntry | n
   // Fetch memory changes made during this dream
   if (entry.started_at) {
     const eventsResult = await sql(
-      `SELECT event_type, node_uri, before_snapshot, after_snapshot, created_at
+      `SELECT id, event_type, node_uri, before_snapshot, after_snapshot, details, created_at
        FROM memory_events
        WHERE source = 'dream:auto'
          AND created_at >= $1
@@ -356,13 +426,19 @@ export async function getDreamEntry(id: number | string): Promise<DiaryEntry | n
        ORDER BY created_at ASC`,
       [entry.started_at, entry.completed_at],
     );
-    entry.memory_changes = eventsResult.rows.map((r: Record<string, unknown>) => ({
-      type: r.event_type as string,
-      uri: r.node_uri as string,
-      before: (r.before_snapshot as Record<string, unknown>) || null,
-      after: (r.after_snapshot as Record<string, unknown>) || null,
-      at: r.created_at ? new Date(r.created_at as string).toISOString() : null,
-    }));
+    entry.memory_changes = eventsResult.rows.map((r: Record<string, unknown>) => {
+      const review = dreamReviewFromDetails(r.details);
+      return {
+        id: Number(r.id || 0),
+        type: r.event_type as string,
+        uri: r.node_uri as string,
+        before: (r.before_snapshot as Record<string, unknown>) || null,
+        after: (r.after_snapshot as Record<string, unknown>) || null,
+        at: r.created_at ? new Date(r.created_at as string).toISOString() : null,
+        review_status: review.status,
+        reviewed_at: review.reviewed_at,
+      };
+    });
   }
 
   return entry;
@@ -389,6 +465,39 @@ function formatDiaryRow(row: Record<string, unknown>, includeDetails = false): D
     entry.details = (row.details as Record<string, unknown>) || {};
   }
   return entry;
+}
+
+export async function reviewDreamChange({
+  eventId,
+  status,
+}: {
+  eventId: number | string;
+  status: string;
+}): Promise<{ event_id: number; status: DreamChangeReviewStatus; reviewed_at: string | null }> {
+  const safeEventId = Number(eventId);
+  if (!Number.isFinite(safeEventId) || safeEventId <= 0) {
+    throw Object.assign(new Error('Invalid dream change event id'), { status: 400 });
+  }
+  const reviewStatus = normalizeDreamChangeReviewStatus(status);
+  const payload = buildDreamReviewPayload(reviewStatus, 'web');
+  const result = await sql(
+    `UPDATE memory_events
+     SET details = jsonb_set(COALESCE(details, '{}'::jsonb), '{dream_review}', $2::jsonb, true)
+     WHERE id = $1
+       AND source = 'dream:auto'
+     RETURNING id, details`,
+    [safeEventId, JSON.stringify(payload)],
+  );
+  const row = result.rows[0] as Record<string, unknown> | undefined;
+  if (!row) {
+    throw Object.assign(new Error('Dream change not found'), { status: 404 });
+  }
+  const review = dreamReviewFromDetails(row.details);
+  return {
+    event_id: Number(row.id || safeEventId),
+    status: review.status,
+    reviewed_at: review.reviewed_at,
+  };
 }
 
 // ---------------------------------------------------------------------------

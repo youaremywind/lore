@@ -5,7 +5,7 @@ import clsx from 'clsx';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '../../lib/api';
 import {
-  PageCanvas, PageTitle, Section, Card, Button, TextButton, Notice, Empty, AppCheckbox, AppInput, AppSelect, AppTextArea, surfaceCardClassName,
+  PageCanvas, PageTitle, Section, Card, Button, TextButton, Notice, Empty, AppCheckbox, AppInput, AppTextArea, surfaceCardClassName,
   fmt, asNumber,
 } from '../../components/ui';
 import RecallStages from '../../components/RecallStages';
@@ -21,7 +21,6 @@ interface DebugForm {
   maxDisplayItems: number | string;
   minDisplayScore: number | string;
   scorePrecision: number | string;
-  readNodeDisplayMode: string;
   excludeBootFromResults: boolean;
 }
 
@@ -33,7 +32,6 @@ const DEFAULT_DEBUG: DebugForm = {
   maxDisplayItems: 3,
   minDisplayScore: 0.60,
   scorePrecision: 2,
-  readNodeDisplayMode: 'soft',
   excludeBootFromResults: true,
 };
 
@@ -49,7 +47,6 @@ export default function RecallWorkbench(): React.JSX.Element {
     maxDisplayItems: readNumberParam(searchParams, 'max_display_items', Number(DEFAULT_DEBUG.maxDisplayItems), { min: 1 }),
     minDisplayScore: Number(readStringParam(searchParams, 'min_display_score', String(DEFAULT_DEBUG.minDisplayScore))) || Number(DEFAULT_DEBUG.minDisplayScore),
     scorePrecision: readNumberParam(searchParams, 'score_precision', Number(DEFAULT_DEBUG.scorePrecision), { min: 0 }),
-    readNodeDisplayMode: readStringParam(searchParams, 'read_node_display_mode', DEFAULT_DEBUG.readNodeDisplayMode),
     excludeBootFromResults: readBooleanParam(searchParams, 'exclude_boot_from_results', DEFAULT_DEBUG.excludeBootFromResults),
   }), [searchParams]);
   const [debugForm, setDebugForm] = useState<DebugForm>(initialForm);
@@ -72,7 +69,6 @@ export default function RecallWorkbench(): React.JSX.Element {
       max_display_items: form.maxDisplayItems,
       min_display_score: form.minDisplayScore,
       score_precision: form.scorePrecision,
-      read_node_display_mode: form.readNodeDisplayMode,
       exclude_boot_from_results: form.excludeBootFromResults,
       strategy: null,
     }, {
@@ -83,7 +79,6 @@ export default function RecallWorkbench(): React.JSX.Element {
       max_display_items: DEFAULT_DEBUG.maxDisplayItems,
       min_display_score: DEFAULT_DEBUG.minDisplayScore,
       score_precision: DEFAULT_DEBUG.scorePrecision,
-      read_node_display_mode: DEFAULT_DEBUG.readNodeDisplayMode,
       exclude_boot_from_results: DEFAULT_DEBUG.excludeBootFromResults,
       strategy: null,
     });
@@ -103,7 +98,6 @@ export default function RecallWorkbench(): React.JSX.Element {
         max_display_items: asNumber(form.maxDisplayItems, 3),
         min_display_score: asNumber(form.minDisplayScore, 0.60),
         score_precision: asNumber(form.scorePrecision, 2),
-        read_node_display_mode: form.readNodeDisplayMode,
         exclude_boot_from_results: form.excludeBootFromResults,
         log_events: true,
       };
@@ -131,7 +125,6 @@ export default function RecallWorkbench(): React.JSX.Element {
       ...debugForm,
       query: debugForm.query.trim(),
       sessionId: debugForm.sessionId.trim() || DEFAULT_DEBUG.sessionId,
-      readNodeDisplayMode: debugForm.readNodeDisplayMode || DEFAULT_DEBUG.readNodeDisplayMode,
     };
     setDebugForm(nextForm);
     router.push(buildDebugUrl(nextForm));
@@ -190,7 +183,7 @@ export default function RecallWorkbench(): React.JSX.Element {
 
             {showAdvanced && (
               <div className="pt-2 border-t border-separator-hairline space-y-3">
-                <div className="grid gap-x-6 gap-y-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+                <div className="grid gap-x-6 gap-y-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
                   <label className="block">
                     <span className="block mb-1 text-[11px] font-medium text-txt-tertiary">{t('Session')}</span>
                     <AppInput value={debugForm.sessionId} onChange={(e: ChangeEvent<HTMLInputElement>) => patchForm({ sessionId: e.target.value })} />
@@ -209,18 +202,6 @@ export default function RecallWorkbench(): React.JSX.Element {
                       <AppInput type="number" step="0.01" value={String(debugForm[key])} onChange={(e: ChangeEvent<HTMLInputElement>) => patchForm({ [key]: e.target.value } as Partial<DebugForm>)} className="font-mono tabular-nums" />
                     </label>
                   ))}
-                  <label className="block">
-                    <span className="block mb-1 text-[11px] font-medium text-txt-tertiary">{t('Read mode')}</span>
-                    <AppSelect
-                      value={debugForm.readNodeDisplayMode}
-                      onValueChange={(value) => patchForm({ readNodeDisplayMode: value })}
-                      options={[
-                        { value: 'soft', label: t('soft') },
-                        { value: 'hard', label: t('hard') },
-                      ]}
-                      className="font-sans"
-                    />
-                  </label>
                 </div>
               </div>
             )}
@@ -248,7 +229,6 @@ export default function RecallWorkbench(): React.JSX.Element {
                 maxDisplayItems={asNumber(debugForm.maxDisplayItems, 3)}
                 scorePrecision={asNumber(debugForm.scorePrecision, 2)}
                 sessionId={debugForm.sessionId}
-                readNodeDisplayMode={debugForm.readNodeDisplayMode}
                 initialStage="query"
               />
             </div>

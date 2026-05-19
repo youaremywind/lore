@@ -10,7 +10,10 @@ interface ThemeContextValue {
 }
 
 const STORAGE_KEY = 'lore-theme';
-const ThemeContext = createContext<ThemeContextValue>({ theme: 'dark', toggleTheme: () => {} });
+const ThemeContext = createContext<ThemeContextValue>({
+  theme: 'dark',
+  toggleTheme: () => {},
+});
 
 interface ThemeProviderProps {
   children: ReactNode;

@@ -48,7 +48,6 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       domain, path,
       priority: body?.priority,
       disclosure: Object.prototype.hasOwnProperty.call(body || {}, 'disclosure') ? body.disclosure : undefined,
-      sessionId: body?.session_id || null,
     });
     if (policyResult.errors.length > 0) {
       return NextResponse.json(
@@ -120,8 +119,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
   const clientType = normalizeClientType(searchParams.get('client_type'));
 
   try {
-    const sessionId = new URL(request.url).searchParams.get('session_id') || null;
-    const policyResult = await validateDeletePolicy({ domain, path, sessionId });
+    const policyResult = await validateDeletePolicy({ domain, path });
     if (policyResult.errors.length > 0) {
       return NextResponse.json(
         withContractWarnings({ detail: policyResult.errors.join('; '), code: 'validation_error' }, policyResult.warnings),

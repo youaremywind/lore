@@ -68,7 +68,6 @@ export interface RecallMemoriesResult {
   items: RecallDisplayItem[];
   suppressed: RecallSuppressed;
   boot_uris: string[];
-  read_node_display_mode: string;
   retrieval_meta: RecallPipelineResult['retrieval_meta'];
   event_log: RecallEventLogState;
 }
@@ -87,7 +86,6 @@ export interface DebugRecallMemoriesResult {
   items: RecallDisplayItem[];
   suppressed: RecallSuppressed;
   boot_uris: string[];
-  read_node_display_mode: string;
   event_log: RecallEventLogState | null;
 }
 
@@ -183,7 +181,6 @@ export async function recallMemories(body: RecallRequestBody, context: RecallReq
     items: result.items,
     suppressed: result.suppressed,
     boot_uris: result.boot_uris,
-    read_node_display_mode: result.read_node_display_mode,
     retrieval_meta: result.retrieval_meta,
     event_log: eventLog,
   };
@@ -224,7 +221,6 @@ export async function debugRecallMemories(body: RecallRequestBody, context: Reca
     items: result.items,
     suppressed: result.suppressed,
     boot_uris: result.boot_uris,
-    read_node_display_mode: result.read_node_display_mode,
     event_log: eventLog,
   };
 }

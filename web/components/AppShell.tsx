@@ -11,6 +11,7 @@ import { ThemeProvider, useTheme } from '../lib/theme';
 import TokenAuth from './TokenAuth';
 import { ConfirmProvider, useConfirm } from './ConfirmDialog';
 import { AppUIProvider, Button } from './ui';
+import { AuroraBackground } from '@lobehub/ui/awesome';
 import { AxiosError } from 'axios';
 
 const BOOT_SETUP_ACK_KEY = 'lore-boot-setup-confirmed';
@@ -29,8 +30,32 @@ const tabs: Tab[] = [
   { href: '/settings', label: 'Settings' },
 ];
 
-export function navIndicatorClassName(isHovering: boolean): string {
-  return 'bg-fill-primary shadow-none';
+export const navIndicatorClassName = 'bg-fill-primary shadow-none';
+
+const appContentClassName = 'relative z-10 h-full w-full max-w-full overflow-x-hidden md:pt-[80px]';
+
+function LoreLogoMark({ className }: { className?: string }): React.JSX.Element {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      preserveAspectRatio="xMidYMid meet"
+      shapeRendering="geometricPrecision"
+      viewBox="126 130 260 260"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        className="fill-current"
+        d="M310.3 144.5A124 124 0 1 0 368.4 203.6L339.4 217.1A92 92 0 1 1 296.3 173.3Z"
+      />
+      <path
+        className="fill-current"
+        d="M224 160H270V276C270 286 276 292 286 292H356L337 321H250C234 321 224 311 224 294Z"
+      />
+      <circle cx="336" cy="172" r="18" className="fill-sys-orange" />
+    </svg>
+  );
 }
 
 interface IndicatorState {
@@ -39,7 +64,7 @@ interface IndicatorState {
   ready: boolean;
 }
 
-function NavDock(): React.JSX.Element {
+export function NavDock(): React.JSX.Element {
   const pathname = usePathname() || '';
   const router = useRouter();
   const { t, lang, setLang } = useT();
@@ -88,21 +113,14 @@ function NavDock(): React.JSX.Element {
   }, [targetHref, pathname]);
 
   return (
-    <header className="fixed top-3 md:top-4 left-1/2 z-50 max-w-[calc(100vw-16px)] -translate-x-1/2">
-      <div className="animate-in relative flex items-center gap-0.5 md:gap-1.5 rounded-full border border-separator-thin bg-bg-elevated/80 backdrop-blur-2xl backdrop-saturate-150 pl-1.5 md:pl-2.5 pr-1 md:pr-2 py-1.5 md:py-2 shadow-dock">
+    <header className="fixed bottom-3 md:bottom-auto md:top-4 left-1/2 z-50 w-[min(calc(100vw-8px),24rem)] md:w-auto md:max-w-[calc(100vw-16px)] -translate-x-1/2">
+      <div className="animate-in relative flex w-full items-center gap-1 md:gap-1.5 rounded-full border border-separator-thin bg-[var(--dock-bg-mobile)] md:bg-[var(--dock-bg)] backdrop-blur-2xl backdrop-saturate-150 pl-1.5 md:pl-2.5 pr-1.5 md:pr-2 py-2.5 md:py-2 shadow-none md:shadow-dock">
         <button
           onClick={() => router.push('/memory')}
-          className="press flex items-center gap-1.5 md:gap-2 rounded-full pl-0.5 md:pl-1 pr-1.5 md:pr-2.5 py-1 hover:bg-fill-quaternary transition-colors"
+          className="press hidden md:flex items-center gap-2 rounded-full pl-1 pr-2.5 py-1 hover:bg-fill-quaternary transition-colors"
         >
-          <div className="flex h-6 w-6 md:h-7 md:w-7 items-center justify-center rounded-lg md:rounded-xl bg-gradient-to-br from-sys-blue to-sys-indigo">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-white md:hidden">
-              <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.6" />
-              <circle cx="9.5" cy="5" r="1.5" fill="currentColor" />
-            </svg>
-            <svg width="16" height="16" viewBox="0 0 14 14" fill="none" className="text-white hidden md:block">
-              <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.6" />
-              <circle cx="9.5" cy="5" r="1.5" fill="currentColor" />
-            </svg>
+          <div className="flex h-7 w-8 shrink-0 items-center justify-center overflow-visible text-txt-primary">
+            <LoreLogoMark className="h-7 w-7" />
           </div>
           <span className="hidden md:inline text-[14px] font-semibold tracking-tight text-txt-primary">Lore</span>
           {version && (
@@ -112,10 +130,10 @@ function NavDock(): React.JSX.Element {
 
         <div className="hidden md:block h-5 w-px bg-separator-thin mx-0.5" />
 
-        <div className="relative overflow-hidden">
+        <div className="relative min-w-0 flex-1 overflow-hidden md:flex-none">
           <nav
             ref={navRef}
-            className="relative flex items-center gap-0.5 overflow-x-auto no-scrollbar"
+            className="relative grid w-full grid-cols-5 items-center gap-0 overflow-hidden md:flex md:w-auto md:gap-0.5 md:overflow-x-auto no-scrollbar"
             onMouseLeave={() => setHoverHref(null)}
           >
             <div
@@ -123,7 +141,7 @@ function NavDock(): React.JSX.Element {
               className={clsx(
                 'pointer-events-none absolute inset-y-0 rounded-full transition-all duration-300 ease-spring',
                 indicator.ready ? 'opacity-100' : 'opacity-0',
-                navIndicatorClassName(Boolean(hoverHref)),
+                navIndicatorClassName,
               )}
               style={{ transform: `translateX(${indicator.x}px)`, width: `${indicator.w}px` }}
             />
@@ -138,7 +156,7 @@ function NavDock(): React.JSX.Element {
                   onMouseEnter={() => setHoverHref(tab.href)}
                   onClick={() => router.push(tab.href)}
                   className={clsx(
-                    'press relative z-10 shrink-0 rounded-full px-2.5 md:px-3.5 py-1.5 md:py-2 text-[12px] md:text-[13.5px] transition-colors duration-200 ease-spring',
+                    'press relative z-10 min-w-0 truncate rounded-full px-1 py-2.5 text-center text-[12.5px] transition-colors duration-200 ease-spring md:shrink-0 md:px-3.5 md:py-2 md:text-[13.5px]',
                     showAsActive
                       ? 'font-semibold text-sys-blue'
                       : isHover
@@ -151,21 +169,22 @@ function NavDock(): React.JSX.Element {
               );
             })}
           </nav>
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-bg-elevated to-transparent md:hidden" />
         </div>
 
         <div className="hidden md:block h-5 w-px bg-separator-thin mx-0.5" />
 
-        <button
-          onClick={toggleTheme}
-          aria-label={theme === 'dark' ? t('Switch to light') : t('Switch to dark')}
-          title={theme === 'dark' ? t('Switch to light') : t('Switch to dark')}
-          className="press flex h-7 w-7 md:h-8 md:w-8 shrink-0 items-center justify-center rounded-full text-txt-secondary hover:bg-fill-quaternary hover:text-txt-primary transition-colors"
-        >
-          {theme === 'dark'
-            ? <Moon size={14} strokeWidth={2} />
-            : <Sun size={14} strokeWidth={2} />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? t('Switch to light') : t('Switch to dark')}
+            title={theme === 'dark' ? t('Switch to light') : t('Switch to dark')}
+            className="press flex h-9 w-9 md:h-8 md:w-8 shrink-0 items-center justify-center rounded-full text-txt-secondary hover:bg-fill-quaternary hover:text-txt-primary transition-colors"
+          >
+            {theme === 'dark'
+              ? <Moon size={14} strokeWidth={2} />
+              : <Sun size={14} strokeWidth={2} />}
+          </button>
+        </div>
 
         <div className="hidden sm:flex items-center rounded-full bg-fill-quaternary p-[3px]">
           {(['zh', 'en'] as const).map((code) => (
@@ -407,8 +426,13 @@ function AppShellInner({ children }: AppShellInnerProps): React.JSX.Element {
 
   return (
     <div className="relative h-screen w-full max-w-full overflow-hidden bg-bg-system text-txt-primary">
+      <AuroraBackground
+        className="absolute inset-0 h-full w-full"
+        classNames={{ content: 'hidden' }}
+        styles={{ content: { display: 'none' } }}
+      />
       <NavDock />
-      <div className="h-full w-full max-w-full overflow-x-hidden pt-[60px] md:pt-[80px]">{children}</div>
+      <div className={appContentClassName}>{children}</div>
     </div>
   );
 }

@@ -154,13 +154,6 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     type: 'integer', default: 3, min: 1, max: 20, step: 1,
     description: '一次召回最多注入几条记忆',
   },
-  {
-    key: 'recall.display.read_node_display_mode',
-    section: 'recall_display',
-    label: '已读节点策略',
-    type: 'enum', default: 'soft', options: ['soft', 'hard'],
-    description: 'soft=分数足够高才展示；hard=完全隐藏',
-  },
 
   // -- Recall safety limits -------------------------------------------------
   {
@@ -315,20 +308,6 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     description: '创建/更新时检查 priority 0/1 的全库容量上限（0 级 ≤5, 1 级 ≤15）',
   },
   {
-    key: 'policy.read_before_modify_enabled',
-    section: 'policy',
-    label: '改前必读检查',
-    type: 'boolean', default: true,
-    description: '更新/删除前检查是否在本次会话中读取过该节点',
-  },
-  {
-    key: 'policy.read_before_modify_window_minutes',
-    section: 'policy',
-    label: '改前必读时间窗口（分钟）',
-    type: 'integer', default: 10, min: 1, max: 60, step: 1,
-    description: '必须在此时间窗口内读取过节点，才算满足"改前必读"',
-  },
-  {
     key: 'policy.disclosure_warning_enabled',
     section: 'policy',
     label: 'Disclosure 质量检查',
@@ -350,6 +329,13 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     label: '做梦 Cron',
     type: 'string', default: '0 3 * * *',
     description: '定时做梦的 5 段 cron 表达式（分 时 日 月 周，按时区设置）',
+  },
+  {
+    key: 'dream.auto_approve_changes',
+    section: 'dream',
+    label: '自动通过 Dream 变更',
+    type: 'boolean', default: false,
+    description: '开启后 Dream 产生的记忆变更会自动标记为已通过；关闭时变更保留为待审核。',
   },
   // -- Backup schedule ------------------------------------------------------
   {

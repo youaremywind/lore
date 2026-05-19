@@ -1,6 +1,6 @@
 # Lore Codex Plugin
 
-Lore gives Codex MCP tools for fixed boot memory, recall search, durable memory writes, and session read tracking.
+Lore gives Codex MCP tools for fixed boot memory, recall search, durable memory writes, and recall adoption tracking.
 
 ## One-Command Install
 

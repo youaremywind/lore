@@ -1,4 +1,8 @@
-# Lore（一个打通所有 agent 的记忆系统）
+<p align="center">
+  <img src="docs/assets/lore-logo.svg" alt="Lore logo" width="96">
+</p>
+
+<h1 align="center">Lore（一个打通所有 agent 的记忆系统）</h1>
 
 [English README](./README.md) · [Quick Start](#3-quick-start) · [手动安装](#4-手动安装) · [接入 agent](#5-接入-agent) · [CLI 选项](#cli-选项) · [日常使用](#6-日常使用) · [开发](#7-开发)
 
@@ -16,7 +20,7 @@
 
 ## 2. 设计理念
 
-Lore 是给 AI agent 用的长期记忆系统。它提供持久记忆图谱、固定启动基线、每轮 prompt 前召回、显式读取追踪和谨慎写入工具。
+Lore 是给 AI agent 用的长期记忆系统。它提供持久记忆图谱、固定启动基线、每轮 prompt 前召回、采用记录和谨慎写入工具。
 
 当前支持的运行时：
 
@@ -36,7 +40,7 @@ Lore 关注完整的记忆生命周期：
 - **Read before trust** — recall 只是线索，真正采用前需要打开记忆节点读取正文。
 - **URI-first graph** — 记忆有稳定 URI，比如 `core://agent`、`preferences://user`、`project://my_project`。
 - **Disclosure triggers** — 每条记忆都有自然语言触发条件，说明它该在什么场景浮现。
-- **Policy-guided writes** — priority 容量、改前必读、boot 节点保护，让记忆图谱保持稳定。
+- **Policy-guided writes** — priority 容量、disclosure 质量检查、boot 节点保护，让记忆图谱保持稳定。
 - **Dream maintenance** — 定时整理可以检查召回质量、结构放置和过期节点，并保留 rollback 历史。
 
 Lore 面向需要跨会话、跨工具、跨运行时连续性的 agent。

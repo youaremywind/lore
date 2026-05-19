@@ -327,11 +327,12 @@ describe('getDreamRecallReview', () => {
     expect(sqlText).not.toContain("metadata->>'query_id'");
   });
 
-  it('limits query content preview to 50 characters and reports truncation', async () => {
+  it('limits query content preview to 300 characters and reports truncation', async () => {
+    const longQuery = 'a'.repeat(320);
     mockSql.mockResolvedValueOnce(makeResult([
       {
         query_id: 'q2',
-        query_text: 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz',
+        query_text: longQuery,
         session_id: '',
         client_type: '',
         merged_count: '4',
@@ -352,8 +353,8 @@ describe('getDreamRecallReview', () => {
     });
     expect(review.queries[0]).toMatchObject({
       query_id: 'q2',
-      content: 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwx',
-      content_full_chars: 52,
+      content: 'a'.repeat(300),
+      content_full_chars: 320,
       session_id: null,
       client_type: null,
     });

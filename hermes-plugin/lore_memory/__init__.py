@@ -24,6 +24,9 @@ from . import formatters
 
 logger = logging.getLogger(__name__)
 CLIENT_BOOT_URI = "core://agent/hermes"
+RECALL_GET_NODE_DESCRIPTION = "Open a memory node. REQUIRED when opening a URI from a <recall>: copy the exact session_id and query_id from that <recall> tag."
+RECALL_SESSION_ID_DESCRIPTION = "REQUIRED when the URI came from <recall>: copy the exact session_id from that <recall> tag."
+RECALL_QUERY_ID_DESCRIPTION = "REQUIRED when the URI came from <recall>: copy the exact query_id from that <recall> tag."
 
 # ---------------------------------------------------------------------------
 # Guidance text (static behavioral instructions)
@@ -211,7 +214,22 @@ class LoreMemoryProvider(MemoryProvider):
         self._client = LoreClient(base_url=base_url, api_token=api_token)
         self._session_id = session_id
 
-        # Fetch boot content and initial environment recalls for system_prompt_block()
+        try:
+            bridge = self._client.bridge_startup(
+                session_id=session_id,
+                channel="hermes",
+                project=_detect_project_info(),
+                include_guidance=True,
+            )
+            system_context = str(bridge.get("system_context") or "").strip()
+            if system_context:
+                self._boot_block = system_context
+                logger.info("Lore memory provider initialized (server: %s, session: %s)", base_url, session_id)
+                return
+        except Exception as e:
+            logger.warning("Lore bridge startup failed: %s", e)
+
+        # Fallback for older Lore servers without bridge endpoints.
         try:
             boot_data = self._client.boot()
             boot_text = _format_boot_section(boot_data)
@@ -330,6 +348,16 @@ class LoreMemoryProvider(MemoryProvider):
         if not normalized_query:
             return ""
         try:
+            bridge = self._client.bridge_recall(session_id=session_id, prompt=normalized_query)
+            context = str(bridge.get("context") or "").strip()
+            with self._prefetch_lock:
+                self._last_recall_query = normalized_query
+            if context:
+                return context
+        except Exception as e:
+            logger.debug("Lore bridge recall failed: %s", e)
+
+        try:
             recall_data = self._client.recall(normalized_query, session_id=session_id)
             items = recall_data.get("items", [])
             with self._prefetch_lock:
@@ -350,11 +378,7 @@ class LoreMemoryProvider(MemoryProvider):
     # -- Session end -------------------------------------------------------
 
     def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
-        if self._client and self._session_id:
-            try:
-                self._client.clear_session_reads(self._session_id)
-            except Exception:
-                pass
+        pass
 
     # -- Shutdown ----------------------------------------------------------
 
@@ -378,15 +402,15 @@ class LoreMemoryProvider(MemoryProvider):
             },
             {
                 "name": "lore_get_node",
-                "description": "Open a memory node to inspect its full content, metadata, and nearby structure. Pass session_id and query_id from the <recall> tag to enable read tracking and recall adoption",
+                "description": RECALL_GET_NODE_DESCRIPTION,
                 "parameters": {
                     "type": "object",
                     "additionalProperties": False,
                     "properties": {
                         "uri": {"type": "string", "description": "Full memory URI (e.g. core://soul). Use core:// or project:// to browse a domain root; bare words are paths in the default domain."},
                         "nav_only": {"type": "boolean", "description": "If true, skip expensive glossary processing"},
-                        "session_id": {"type": "string", "description": "Session identifier from the <recall session_id=\"...\"> tag"},
-                        "query_id": {"type": "string", "description": "Query identifier from the <recall query_id=\"...\"> tag"},
+                        "session_id": {"type": "string", "description": RECALL_SESSION_ID_DESCRIPTION},
+                        "query_id": {"type": "string", "description": RECALL_QUERY_ID_DESCRIPTION},
                     },
                     "required": ["uri"],
                 },
@@ -412,7 +436,7 @@ class LoreMemoryProvider(MemoryProvider):
             },
             {
                 "name": "lore_update_node",
-                "description": "Revise an existing long-term memory node. Any provided content, metadata, and glossary fields are applied as one node update event; omitted fields are left unchanged",
+                "description": "Revise an existing long-term memory node. Omitted content, metadata, and glossary mutation fields are left unchanged",
                 "parameters": {
                     "type": "object",
                     "additionalProperties": False,
@@ -421,10 +445,8 @@ class LoreMemoryProvider(MemoryProvider):
                         "content": {"type": "string", "description": "New content to replace the existing content; omit to leave content unchanged"},
                         "priority": {"type": "integer", "minimum": 0, "description": "New priority level; omit to leave priority unchanged"},
                         "disclosure": {"type": "string", "description": "New disclosure / trigger condition; omit to leave disclosure unchanged"},
-                        "glossary": {"type": "array", "items": {"type": "string"}, "description": "Full replacement list for this node glossary. Omit to leave glossary unchanged; pass [] to clear it"},
                         "glossary_add": {"type": "array", "items": {"type": "string"}, "description": "Keywords to add as part of this same node update event"},
                         "glossary_remove": {"type": "array", "items": {"type": "string"}, "description": "Keywords to remove as part of this same node update event"},
-                        "session_id": {"type": "string", "description": "Session identifier from the <recall session_id=\"...\"> tag"},
                     },
                     "required": ["uri"],
                 },
@@ -437,7 +459,6 @@ class LoreMemoryProvider(MemoryProvider):
                     "additionalProperties": False,
                     "properties": {
                         "uri": {"type": "string", "description": "Full memory URI for the path you want to remove"},
-                        "session_id": {"type": "string", "description": "Session identifier from the <recall session_id=\"...\"> tag"},
                     },
                     "required": ["uri"],
                 },
@@ -475,30 +496,6 @@ class LoreMemoryProvider(MemoryProvider):
                 "description": "Browse the top-level memory domains available in the memory system",
                 "parameters": {"type": "object", "properties": {}, "required": []},
             },
-            {
-                "name": "lore_list_session_reads",
-                "description": "Show which memory nodes have already been opened in this session",
-                "parameters": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "properties": {
-                        "session_id": {"type": "string", "description": "Session identifier"},
-                    },
-                    "required": ["session_id"],
-                },
-            },
-            {
-                "name": "lore_clear_session_reads",
-                "description": "Reset per-session memory read tracking",
-                "parameters": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "properties": {
-                        "session_id": {"type": "string", "description": "Session identifier"},
-                    },
-                    "required": ["session_id"],
-                },
-            },
         ]
 
     # -- Tool dispatch -----------------------------------------------------
@@ -535,16 +532,6 @@ class LoreMemoryProvider(MemoryProvider):
         domain, path = self._client.parse_uri(uri)
         data = self._client.get_node(domain, path, nav_only)
         node = data.get("node", {})
-
-        # Session read tracking
-        if session_id and node.get("uri"):
-            try:
-                self._client.mark_session_read(
-                    session_id=session_id, uri=node["uri"],
-                    node_uuid=node.get("node_uuid"), source="tool:lore_get_node"
-                )
-            except Exception:
-                pass
 
         # Recall usage tracking
         if query_id and node.get("uri"):
@@ -596,8 +583,6 @@ class LoreMemoryProvider(MemoryProvider):
         data = self._client.update_node(
             domain=domain, path=path, content=args.get("content"),
             priority=args.get("priority"), disclosure=args.get("disclosure"),
-            session_id=args.get("session_id") or self._session_id,
-            glossary=args.get("glossary"),
             glossary_add=args.get("glossary_add"),
             glossary_remove=args.get("glossary_remove")
         )
@@ -607,7 +592,7 @@ class LoreMemoryProvider(MemoryProvider):
     def _tool_lore_delete_node(self, args: Dict) -> str:
         uri = args.get("uri", "")
         domain, path = self._client.parse_uri(uri)
-        data = self._client.delete_node(domain, path, session_id=args.get("session_id") or self._session_id)
+        data = self._client.delete_node(domain, path)
         deleted_uri = data.get("deleted_uri") or data.get("uri") or uri
         canonical_uri = data.get("uri") or deleted_uri
         if canonical_uri != deleted_uri:
@@ -640,15 +625,6 @@ class LoreMemoryProvider(MemoryProvider):
     def _tool_lore_list_domains(self, args: Dict) -> str:
         data = self._client.list_domains()
         return formatters.format_domains(data)
-
-    def _tool_lore_list_session_reads(self, args: Dict) -> str:
-        data = self._client.list_session_reads(args.get("session_id", ""))
-        return formatters.format_session_reads(data)
-
-    def _tool_lore_clear_session_reads(self, args: Dict) -> str:
-        self._client.clear_session_reads(args.get("session_id", ""))
-        return f"Cleared read tracking for session: {args.get('session_id', '')}"
-
 
 # ---------------------------------------------------------------------------
 # Plugin registration entry point

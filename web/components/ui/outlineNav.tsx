@@ -116,7 +116,7 @@ export function OutlineNavGroup({
         className={clsx(
           'mb-1.5 flex w-full items-center gap-1.5 rounded-md py-1 text-left text-[11px] font-medium uppercase tracking-[0.08em] transition-colors',
           onClick && 'cursor-pointer px-1 hover:bg-fill-quaternary',
-          active ? 'bg-sys-blue/[0.05] text-sys-blue' : 'text-txt-quaternary',
+          active ? 'bg-sys-blue/[0.05] text-sys-blue' : 'text-txt-tertiary',
         )}
       >
         {left ? <span className="flex h-3 w-3 shrink-0 items-center justify-center">{left}</span> : null}
@@ -159,7 +159,7 @@ export function OutlineNavItem({
       className={clsx(
         'relative flex min-h-7 w-full items-center gap-1.5 rounded-md py-1.5 pl-3 pr-2 text-left text-[12.5px] leading-snug transition-colors',
         'before:absolute before:left-0 before:top-1/2 before:h-px before:w-2 before:-translate-x-3 before:bg-separator-thin',
-        active ? 'bg-sys-blue/[0.05] font-medium text-sys-blue before:bg-sys-blue' : 'text-txt-secondary hover:bg-fill-quaternary hover:text-txt-primary',
+        active ? 'bg-sys-blue/[0.05] font-medium text-sys-blue before:bg-sys-blue' : 'text-txt-primary hover:bg-fill-quaternary hover:text-txt-primary',
         className,
       )}
     >

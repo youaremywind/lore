@@ -33,10 +33,13 @@ interface MemoryChangeAfter {
 }
 
 export interface MemoryChange {
+  id?: number;
   type: string;
   uri: string;
   before?: MemoryChangeBefore;
   after?: MemoryChangeAfter;
+  review_status?: 'pending' | 'approved' | 'dismissed';
+  reviewed_at?: string | null;
 }
 
 export interface DreamSummary {
@@ -130,6 +133,7 @@ interface UseDreamPageControllerResult {
   loading: boolean;
   running: boolean;
   rollingBack: boolean;
+  reviewingChangeId: number | null;
   config: DreamConfig;
   detail: DreamEntry | null;
   detailLoading: boolean;
@@ -139,6 +143,18 @@ interface UseDreamPageControllerResult {
   handleSelect: (row: Record<string, unknown>) => void;
   handleBack: () => void;
   handleRollback: (id: string | number) => Promise<void>;
+  handleReviewChange: (changeId: number, status: 'approved' | 'dismissed') => Promise<void>;
+  handleEditChange: (uri: string) => void;
+}
+
+function parseMemoryUri(uri: string): { domain: string; path: string } {
+  const value = String(uri || '').trim();
+  const marker = value.indexOf('://');
+  if (marker < 0) return { domain: 'core', path: value.replace(/^\/+|\/+$/g, '') };
+  return {
+    domain: value.slice(0, marker).trim() || 'core',
+    path: value.slice(marker + 3).replace(/^\/+|\/+$/g, ''),
+  };
 }
 
 export function useDreamPageController({ confirmDialog, t }: UseDreamPageControllerArgs): UseDreamPageControllerResult {
@@ -150,6 +166,7 @@ export function useDreamPageController({ confirmDialog, t }: UseDreamPageControl
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [rollingBack, setRollingBack] = useState(false);
+  const [reviewingChangeId, setReviewingChangeId] = useState<number | null>(null);
   const [config, setConfig] = useState<DreamConfig>({ enabled: true, schedule_hour: 3 });
   const [detail, setDetail] = useState<DreamEntry | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -360,6 +377,38 @@ export function useDreamPageController({ confirmDialog, t }: UseDreamPageControl
     }
   }, [confirmDialog, loadDiary, navigateToDiary, t]);
 
+  const handleReviewChange = useCallback(async (changeId: number, status: 'approved' | 'dismissed') => {
+    setReviewingChangeId(changeId);
+    try {
+      const result = await api.post('/browse/dream', {
+        action: 'review_change',
+        event_id: changeId,
+        status,
+      }).then((response) => response.data as { event_id: number; status: 'pending' | 'approved' | 'dismissed'; reviewed_at: string | null });
+      setDetail((previous) => {
+        if (!previous?.memory_changes) return previous;
+        return {
+          ...previous,
+          memory_changes: previous.memory_changes.map((change) => (
+            change.id === result.event_id
+              ? { ...change, review_status: result.status, reviewed_at: result.reviewed_at }
+              : change
+          )),
+        };
+      });
+    } catch (error) {
+      console.error('Dream change review failed', error);
+    } finally {
+      setReviewingChangeId(null);
+    }
+  }, []);
+
+  const handleEditChange = useCallback((uri: string) => {
+    const { domain, path } = parseMemoryUri(uri);
+    const href = buildUrlWithSearchParams('/memory', searchParams, { domain, path }, { path: '' });
+    router.push(href);
+  }, [router, searchParams]);
+
   const latestRollbackId = String(entries.find((entry) => entry.status === 'completed' || entry.status === 'error')?.id || '');
 
   return {
@@ -369,6 +418,7 @@ export function useDreamPageController({ confirmDialog, t }: UseDreamPageControl
     loading,
     running,
     rollingBack,
+    reviewingChangeId,
     config,
     detail,
     detailLoading,
@@ -378,5 +428,7 @@ export function useDreamPageController({ confirmDialog, t }: UseDreamPageControl
     handleSelect,
     handleBack,
     handleRollback,
+    handleReviewChange,
+    handleEditChange,
   };
 }

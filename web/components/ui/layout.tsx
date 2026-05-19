@@ -21,7 +21,7 @@ export function PageCanvas({ children, maxWidth, size, className }: PageCanvasPr
   const mw = maxWidth ?? size ?? '5xl';
   return (
     <div className="h-full w-full overflow-y-auto">
-      <div className={clsx('mx-auto w-full px-4 py-6 md:px-10 md:py-14', {
+      <div className={clsx('mx-auto w-full px-4 pt-6 pb-24 md:px-10 md:py-14', {
         'max-w-3xl': mw === '3xl',
         'max-w-4xl': mw === '4xl',
         'max-w-5xl': mw === '5xl',

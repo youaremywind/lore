@@ -132,6 +132,7 @@ export default function DreamPage(): React.JSX.Element {
     loading,
     running,
     rollingBack,
+    reviewingChangeId,
     config,
     detail,
     detailLoading,
@@ -140,6 +141,8 @@ export default function DreamPage(): React.JSX.Element {
     handleSelect,
     handleBack,
     handleRollback,
+    handleReviewChange,
+    handleEditChange,
   } = useDreamPageController({ confirmDialog, t });
 
   if (selectedId) {
@@ -150,8 +153,11 @@ export default function DreamPage(): React.JSX.Element {
           loading={detailLoading}
           canRollback={selectedId === latestRollbackId}
           rollingBack={rollingBack}
+          reviewingChangeId={reviewingChangeId}
           onBack={handleBack}
           onRollback={() => void handleRollback(selectedId)}
+          onReviewChange={(changeId, status) => void handleReviewChange(changeId, status)}
+          onEditChange={handleEditChange}
           t={t}
         />
       </PageCanvas>
