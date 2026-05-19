@@ -225,6 +225,11 @@
           "description": "Split, move, delete, and review memories that have become stale or broad."
         },
         {
+          "path": "operating-playbooks/back-up-memory",
+          "title": "Back up memory",
+          "description": "Create and verify a backup before heavier maintenance, migration, or broad memory cleanup."
+        },
+        {
           "path": "operating-playbooks/prepare-a-new-project",
           "title": "Prepare a new project",
           "description": "Create a project memory branch with overview, commands, constraints, and glossary terms."
