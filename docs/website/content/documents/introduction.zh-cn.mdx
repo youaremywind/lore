@@ -1,0 +1,21 @@
+Lore 为 AI Agent 提供一套共享的长期记忆系统。
+
+安装完成后，先阅读概念页面，理解 Lore 保存什么、Agent 如何接收记忆，以及如何判断一条笔记是否应该进入持久记忆。
+
+## 简短版本
+
+- **Boot memory** 提供稳定的启动上下文，例如共享 Agent 规则、用户偏好和运行时专属约束。
+- **Recall** 为当前 prompt 提供任务专属的候选记忆。
+- **Agent 应该先打开被召回节点**，再把它们当作事实使用。
+- **持久变更应该写回 Lore**，而不是复制到每个本地 Agent 文件里。
+- **Dream** 帮助审阅并改善记忆质量，但重要变更仍然需要人工审阅。
+
+## 接下来读什么
+
+如果你刚开始使用 Lore，先读这三个概念页面：
+
+1. [Lore 适合保存什么](/zh-cn/documents/introduction/what-lore-is-for)
+2. [Lore 如何工作](/zh-cn/documents/introduction/how-lore-works)
+3. [什么时候使用 Lore](/zh-cn/documents/introduction/when-to-use-it)
+
+准备写出更好的记忆时，再阅读记忆模型页面：路径、披露触发条件、优先级和术语。

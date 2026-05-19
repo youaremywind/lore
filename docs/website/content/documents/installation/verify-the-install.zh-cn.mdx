@@ -1,0 +1,14 @@
+安装后先验证边界，再开始迁移本地 Agent 指令。
+
+检查：
+
+1. Web 服务器健康检查成功：`/api/health`。
+2. `/setup` 已完成 embedding、View LLM 和启动记忆设置。
+3. Web Console 可以打开 Memory、Recall、Dream 和 Settings 页面。
+4. 如果设置了 `API_TOKEN`，浏览器、REST 和 MCP 客户端都能认证。
+5. Agent MCP URL 包含正确的 `client_type`。
+6. 重启 Agent 后，启动上下文包含 Lore boot baseline。
+7. 真实 prompt 会出现 `<recall>` 块。
+8. 打开被召回节点可以成功，并且使用记录被写回。
+
+如果其中某项失败，不要先调召回阈值。先修复对应边界：服务器、数据库、设置、认证、Agent 配置或 hooks。

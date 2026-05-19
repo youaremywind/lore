@@ -1,0 +1,10 @@
+在服务器健康且 `/setup` 完成后连接 Agent。
+
+安装器支持的 channel 是 `claudecode`、`codex`、`pi`、`openclaw` 和 `hermes`。你可以安装所有 channel，选择子集，跳过 Docker，或把本地 Agent 指向其他地方运行的 Lore 服务器。
+
+Agent 集成有两个不同任务：
+
+1. **连接** — MCP URL、`client_type`、bearer token、插件文件和 hooks。
+2. **记忆归属** — 共享持久规则保存在 Lore；本地 `CLAUDE.md` 和 `AGENTS.md` 保持很小。
+
+本节只说明连接行为。连接可用后，使用[把本地 Agent 文档迁移到 Lore](/zh-cn/documents/installation/move-agent-instructions-to-lore)，把重复的长期指令从本地 Agent 文件中移除。

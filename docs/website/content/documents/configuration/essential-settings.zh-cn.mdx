@@ -1,0 +1,19 @@
+关键设置分为两类：部署环境变量，以及保存在 Lore 数据库中的运行时设置。
+
+| 设置 | 配置位置 | 为什么重要 |
+| --- | --- | --- |
+| `DATABASE_URL` | Web 服务器环境 | 服务器 API、迁移、记忆读取和设置存储都需要它 |
+| `API_TOKEN` | Web 服务器环境 | REST 和 MCP 访问的可选 bearer token；Web UI 会把同一个 token 存在 `api_token` cookie 中 |
+| `REDIS_URL` | Web 服务器环境 | 可选共享缓存后端；如果启动时为空或不可达，Lore 使用进程内 LRU 缓存 |
+| `CACHE_KEY_PREFIX` | Web 服务器环境 | 将 Lore 缓存键与其他 Redis 使用者隔离 |
+| `CACHE_LOCAL_MAX_ITEMS` | Web 服务器环境 | 未使用 Redis 时限制进程内缓存大小 |
+| `LORE_DB_POOL_SIZE` | Web 服务器环境 | 控制 PostgreSQL 连接池大小；默认是 `10` |
+| embedding provider/base URL/API key/model | `/setup`、`/settings` 或 `/api/settings` | 语义召回和索引重建需要它 |
+| View LLM provider/base URL/API key/model | `/setup`、`/settings` 或 `/api/settings` | 生成视图和 Dream 工作流需要它 |
+| recall、Dream、cache、backup policy | `/settings` | 控制服务器运行后的日常行为 |
+
+当前服务器代码不会从 `.env` 读取 embedding 或 View LLM 凭据；这些值保存在 `app_settings` 表里。`API_TOKEN`、`DATABASE_URL` 等服务器级变量用部署密钥管理；运行时模型设置用 Web Console 管理。
+
+Docker Compose 还会使用 `POSTGRES_DATA_DIR`、`REDIS_DATA_DIR`、`SNAPSHOT_DATA_DIR` 等宿主机变量挂载持久化存储。在 Web 容器内部，备份和待审阅 changeset 会写入 `/app/snapshots`。
+
+如果 Agent 连不上但 Web Console 正常，先检查客户端配置：`base_url`、token、MCP URL 和 `client_type`。

@@ -1,0 +1,39 @@
+最快路径是安装脚本。它会下载当前发布资产，除非你指定已有服务器，否则会启动 Docker Compose，写入 `~/.lore/config.json`，并配置选中的 Agent 渠道。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/scripts/install.sh | bash
+```
+
+中文安装输出：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/scripts/install.zh.sh | bash
+```
+
+`scripts/install.sh` 实现了常用选项：
+
+| 选项 | 什么时候使用 |
+| --- | --- |
+| `--channels claudecode,codex` | 只安装选中的集成，而不是所有支持的渠道 |
+| `--base-url http://host:18901` | 把客户端连接到已有 Lore 服务器；会跳过 Docker 启动 |
+| `--api-token TOKEN` | 为受 `API_TOKEN` 保护的服务器配置客户端 |
+| `--skip-docker` | 只安装客户端集成，不运行 Docker Compose |
+| `--pre` | 使用 `pre-latest` 发布渠道 |
+| `--dev` | 使用 `dev-latest` 发布渠道 |
+| `--force` | 即使当前版本已经是最新，也重新安装 |
+
+示例：
+
+```bash
+# 只安装 Codex 和 Claude Code 集成
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/scripts/install.sh | bash -s -- --channels codex,claudecode
+
+# 把本机 Agent 连接到另一台已经运行的 Lore 服务器
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/scripts/install.sh | bash -s -- --base-url http://192.168.1.100:18901 --api-token YOUR_TOKEN
+```
+
+默认 Docker 安装使用仓库中的 `docker-compose.yml`。它会启动 PostgreSQL、Redis 和 Lore Web 服务器。默认 Web 端口是 `18901`；安装后打开 `http://127.0.0.1:18901/setup`。
+
+安装集成后，重启 Agent 运行时。Codex 用户还应该打开 `/hooks`，并在提示时信任 Lore hooks。如果 `/plugins` 仍然显示 Lore 可安装，请在那里手动安装；安装器已经配置了 MCP 和 hooks。
+
+如果不使用脚本，请阅读[手动配置](/zh-cn/documents/installation/manual-configuration)。那一页列出了准确的服务器 `.env`、`~/.lore/config.json` 和各 Agent 配置形态。

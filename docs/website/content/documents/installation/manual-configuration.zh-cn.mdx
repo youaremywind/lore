@@ -1,0 +1,299 @@
+当你想手动配置 Lore，而不是运行 `scripts/install.sh` 时，使用这一页。
+
+手动安装可以理解为把安装器拆成四个明确层次：
+
+1. **服务器进程** — Docker Compose、容器环境变量、数据库 URL、Redis URL、API token 和可写 snapshot 存储。
+2. **运行时设置** — 通过 `/setup`、`/settings` 或 `/api/settings` 保存的 embedding、View LLM、recall、Dream 和 backup 值。
+3. **共享客户端状态** — Claude Code 和 Codex hooks 会读取的 `~/.lore/config.json`。
+4. **Agent 运行时配置** — MCP URL、`client_type`、token、hooks 和插件专属选项。
+
+不要混用这些层次。Agent 本地文件不应该包含 `DATABASE_URL`，服务器 `.env` 不应该包含单个 Agent 的 hook 配置。
+
+## 服务器 `.env`
+
+Lore Web 服务器需要 `DATABASE_URL`。`API_TOKEN`、Redis、镜像名、端口和卷路径是可选项，但应该明确写出。
+
+仓库 `docker-compose.yml` 使用的 Docker Compose `.env` 可以从这个形态开始：
+
+```env
+# Locale
+TZ=Asia/Shanghai
+
+# Bundled PostgreSQL container
+POSTGRES_DB=lore
+POSTGRES_USER=lore
+POSTGRES_PASSWORD=change-me
+POSTGRES_PORT=55439
+POSTGRES_DATA_DIR=./data/postgres
+
+# Lore Web server
+DATABASE_URL=postgresql://lore:change-me@postgres:5432/lore
+WEB_PORT=18901
+API_TOKEN=
+LORE_DB_POOL_SIZE=10
+
+# Cache. If REDIS_URL is empty or unreachable at startup, Lore uses process-local LRU cache.
+REDIS_URL=redis://redis:6379/0
+REDIS_DATA_DIR=./data/redis
+CACHE_KEY_PREFIX=lore
+CACHE_LOCAL_MAX_ITEMS=2000
+
+# Local files used for backups and pending review changesets.
+# The Compose file mounts this host path to /app/snapshots in the Web container.
+SNAPSHOT_DATA_DIR=./data/snapshots
+
+# Images
+LORE_POSTGRES_IMAGE=fffattiger/pgvector-zhparser:pg16
+LORE_REDIS_IMAGE=redis:7-alpine
+LORE_FRONTEND_IMAGE=fffattiger/lore:latest
+```
+
+在包含 `docker-compose.yml` 和 `.env` 的目录中启动服务器：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/docker-compose.yml -o docker-compose.yml
+docker compose up -d
+docker compose ps
+curl -fsS http://127.0.0.1:18901/api/health
+```
+
+如果设置了 `API_TOKEN`，所有受保护的 REST 和 MCP 请求都必须发送 `Authorization: Bearer <token>`。浏览器 UI 认证使用同一个 token；Web UI 的 token 提示会创建 `api_token` cookie。
+
+## 非 Docker 服务器进程
+
+非 Docker 部署时，把这些环境变量提供给 Next.js 服务器进程：
+
+```env
+DATABASE_URL=postgresql://lore:change-me@db.example.com:5432/lore
+API_TOKEN=YOUR_SERVER_TOKEN_IF_USED
+REDIS_URL=redis://redis.example.com:6379/0
+CACHE_KEY_PREFIX=lore
+CACHE_LOCAL_MAX_ITEMS=2000
+LORE_DB_POOL_SIZE=10
+```
+
+还要创建可写的 `/app/snapshots` 目录，用于本地备份和待审阅 changeset。这个路径在当前服务器代码中是固定的（`web/server/lore/core/storagePaths.ts`）。Docker Compose 通过把 `SNAPSHOT_DATA_DIR` 挂载到 `/app/snapshots`，让宿主机侧路径可配置。
+
+服务器启动会通过 `web/instrumentation.ts` 运行迁移。初始迁移会创建 `vector`，然后尝试 `pg_jieba`，再回退到 `zhparser`，最后在没有中文 tokenizer 时回退到 PostgreSQL `simple` 全文搜索。使用能创建扩展和 schema 对象的数据库角色，或先用数据库 owner 运行首次迁移，再把应用切换到受限角色。
+
+## 启动后的运行时设置
+
+当前代码路径不会从服务器 `.env` 读取 embedding 和 View LLM 设置。它们是存储在 `app_settings` 表中的运行时设置，由 `/setup`、`/settings` 和 `/api/settings` 管理。
+
+推荐路径：
+
+1. 打开 `http://127.0.0.1:18901/setup`。
+2. 使用 OpenAI-compatible embedding 端点完成 **Embedding setup**。
+3. 使用 OpenAI-compatible chat、OpenAI Responses 或 Anthropic Messages 设置完成 **View LLM setup**。
+4. 审阅启动记忆设置。
+5. 设置完成后，重启已连接的 Agent。
+
+如果需要绕过 Web UI 写入设置，调用 settings API：
+
+```bash
+curl -fsS -X PUT http://127.0.0.1:18901/api/settings \
+  -H 'content-type: application/json' \
+  -H 'authorization: Bearer YOUR_SERVER_TOKEN_IF_USED' \
+  --data '{
+    "patch": {
+      "embedding.provider": "openai_compatible",
+      "embedding.base_url": "http://host.docker.internal:8090/v1",
+      "embedding.api_key": "YOUR_EMBEDDING_KEY",
+      "embedding.model": "text-embedding-3-small",
+      "view_llm.provider": "openai_compatible",
+      "view_llm.base_url": "http://host.docker.internal:8090/v1",
+      "view_llm.api_key": "YOUR_LLM_KEY",
+      "view_llm.model": "deepseek-v4-flash"
+    }
+  }'
+```
+
+只有当 `API_TOKEN` 为空时，才省略 `authorization` 头。Secret 设置不能通过写入空字符串清除；需要清除时，从 UI 或 API 使用 `/api/settings/reset`。
+
+## 共享客户端配置
+
+Claude Code 和 Codex hooks 会读取 `~/.lore/config.json`。手动配置客户端时创建它：
+
+```json
+{
+  "base_url": "http://127.0.0.1:18901",
+  "api_token": "YOUR_TOKEN_IF_API_TOKEN_IS_SET",
+  "docker_managed": false
+}
+```
+
+规则：
+
+- 去掉 `base_url` 末尾的斜杠；
+- 当服务器没有 `API_TOKEN` 时，省略 `api_token`；
+- 手动管理服务器时保持 `docker_managed` 为 false；
+- 如果想换位置，在运行支持 `LORE_HOME` 的 hooks 前设置它。
+
+## Claude Code
+
+Claude Code 需要 Lore 插件文件、MCP 端点、环境变量，以及启动指导导入。
+
+插件 MCP URL 是：
+
+```text
+${LORE_BASE_URL:-http://127.0.0.1:18901}/api/mcp?client_type=claudecode
+```
+
+写入 `~/.claude/settings.json`，让 Claude 能展开 `LORE_BASE_URL`，并发送服务器使用的同一个 token：
+
+```json
+{
+  "env": {
+    "LORE_BASE_URL": "http://127.0.0.1:18901",
+    "LORE_API_TOKEN": "YOUR_TOKEN_IF_USED"
+  }
+}
+```
+
+复制插件 guidance，并从 `~/.claude/CLAUDE.md` 导入：
+
+```bash
+mkdir -p ~/.claude
+cp /path/to/claudecode-plugin/rules/lore-guidance.md ~/.claude/lore-guidance.md
+printf '@~/.claude/lore-guidance.md\n' >> ~/.claude/CLAUDE.md
+```
+
+Claude hook 定义位于 `claudecode-plugin/hooks/hooks.json`。它们会运行：
+
+| Event | Hook |
+| --- | --- |
+| `SessionStart` | `rules-inject.ts` 加载 Lore guidance 和启动上下文 |
+| `UserPromptSubmit` | `recall-inject.ts` 获取每次 prompt 的召回 |
+
+修改 settings、插件文件或 `CLAUDE.md` 后，重启 Claude Code。
+
+## Codex
+
+Codex 需要准备或安装 Lore 插件、启用插件、注册 MCP，并配置 hooks。
+
+最小 `~/.codex/config.toml`：
+
+```toml
+[plugins."lore@lore"]
+enabled = true
+
+[features]
+hooks = true
+```
+
+无服务器认证时注册 MCP：
+
+```bash
+codex mcp remove lore || true
+codex mcp add lore --url "http://127.0.0.1:18901/api/mcp?client_type=codex"
+```
+
+有服务器认证时注册 MCP：
+
+```bash
+export LORE_API_TOKEN="YOUR_TOKEN"
+codex mcp remove lore || true
+codex mcp add lore --url "http://127.0.0.1:18901/api/mcp?client_type=codex" --bearer-token-env-var LORE_API_TOKEN
+```
+
+从 Codex 插件包安装用户级兼容 hooks：
+
+```bash
+export LORE_BASE_URL="http://127.0.0.1:18901"
+export LORE_API_TOKEN="YOUR_TOKEN_IF_USED"
+bash /path/to/codex-plugin/scripts/install-hooks.sh
+```
+
+该脚本会写入 `~/.codex/hooks.json`。当前 Codex 版本可以显示 plugin-local hooks，但可能不会执行它们，所以用户级 hook 文件仍然是安全的手动路径。重启 Codex，打开 `/hooks`，并在提示时信任 Lore hooks。
+
+## OpenClaw
+
+OpenClaw 从 `~/.openclaw/openclaw.json` 的插件 entry 中读取 Lore 选项。使用这个形态：
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "lore": {
+        "enabled": true,
+        "config": {
+          "baseUrl": "http://127.0.0.1:18901",
+          "apiToken": "YOUR_TOKEN_IF_USED",
+          "timeoutMs": 30000,
+          "defaultDomain": "core",
+          "injectPromptGuidance": true,
+          "startupHealthcheck": true,
+          "recallEnabled": true,
+          "minDisplayScore": 0.4,
+          "maxDisplayItems": 3,
+          "scorePrecision": 2,
+          "excludeBootFromResults": true
+        }
+      }
+    }
+  }
+}
+```
+
+当服务器公开访问时，可以省略 `apiToken`。省略后，插件会回退读取 OpenClaw 进程环境中的 `LORE_API_TOKEN` 或 `API_TOKEN`。
+
+## Pi
+
+Pi 从 `${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/extensions` 发现扩展。把 Lore 扩展安装或 symlink 到那里：
+
+```bash
+PI_CODING_AGENT_DIR="$HOME/.pi/agent" bash /path/to/pi-extension/scripts/install-local.sh
+```
+
+如果你的 Pi 运行时提供扩展配置，使用：
+
+```json
+{
+  "baseUrl": "http://127.0.0.1:18901",
+  "apiToken": "YOUR_TOKEN_IF_USED",
+  "timeoutMs": 30000,
+  "defaultDomain": "core",
+  "injectPromptGuidance": true,
+  "startupHealthcheck": true,
+  "recallEnabled": true
+}
+```
+
+如果插件配置不可用，在 Pi 进程环境中设置：
+
+```bash
+export LORE_BASE_URL="http://127.0.0.1:18901"
+export LORE_API_TOKEN="YOUR_TOKEN_IF_USED"
+```
+
+安装后在 Pi 内运行 `/reload`，或重启 Pi。
+
+## Hermes
+
+Hermes 直接读取环境变量：
+
+```bash
+export LORE_BASE_URL="http://127.0.0.1:18901"
+export LORE_API_TOKEN="YOUR_TOKEN_IF_USED"
+```
+
+然后把插件包 symlink 到 Hermes 插件路径：
+
+```bash
+mkdir -p ~/.hermes/skills
+ln -s /path/to/hermes-plugin/lore_memory ~/.hermes/skills/lore_memory
+```
+
+重启 Hermes，让它初始化 provider，并在调用 Lore 时使用 `client_type=hermes`。
+
+## 最终检查
+
+手动配置完成后检查：
+
+1. `curl -fsS http://127.0.0.1:18901/api/health` 返回成功。
+2. `/setup` 显示 embedding、View LLM 和启动设置已完成。
+3. Agent MCP URL 包含正确的 `client_type`。
+4. 受保护服务器能从 MCP 和 REST 客户端收到 `Authorization: Bearer <API_TOKEN>`。
+5. 启动上下文包含启动基线。
+6. 真实 prompt 会产生 `<recall>` 块。
+7. 能打开被召回节点，并记录召回使用情况。

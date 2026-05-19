@@ -1,0 +1,14 @@
+Lore 的记忆模型围绕一条可寻址记忆展开。
+
+一条有用记忆通常包含：
+
+| 字段 | 用途 |
+| --- | --- |
+| URI/path | 稳定地址，例如 `core://agent` 或 `project://my_app/deployment` |
+| content | 事实、规则、决策或工作流正文 |
+| disclosure | 未来什么情况下应该出现 |
+| glossary | 别名、产品名、缩写和常见提示词 |
+| priority | 重要性信号，不是绝对排序 |
+| history | 变更记录，帮助审阅和回滚 |
+
+路径让记忆可浏览；disclosure 和 glossary 让记忆可召回；priority 帮助排序但不能替代良好内容。

@@ -2,6 +2,10 @@
   "schemaVersion": 1,
   "defaultPath": "installation",
   "contentRoot": "content/documents",
+  "locales": [
+    "en",
+    "zh-cn"
+  ],
   "source": "Lore public documentation for LoreHub.",
   "parents": [
     {
