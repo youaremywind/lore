@@ -157,10 +157,11 @@ function isNonSigningAnthropicEndpoint(config: ResolvedViewLlmConfig): boolean {
       || hostname === 'api.z.ai'
       || hostname.endsWith('.z.ai')
       || hostname === 'open.bigmodel.cn'
-      || hostname.endsWith('.bigmodel.cn');
+      || hostname.endsWith('.bigmodel.cn')
+      || hostname.endsWith('.volces.com');
   } catch {
     const lower = baseUrl.toLowerCase();
-    return lower.includes('deepseek') || lower.includes('z.ai') || lower.includes('bigmodel');
+    return lower.includes('deepseek') || lower.includes('z.ai') || lower.includes('bigmodel') || lower.includes('volces');
   }
 }
 

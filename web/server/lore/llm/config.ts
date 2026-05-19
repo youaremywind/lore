@@ -54,13 +54,39 @@ function buildOpenAiProvider(config: { base_url: string; api_key: string }): Ret
   });
 }
 
+function needsUnsignedThinkingPatch(config: ResolvedViewLlmConfig): boolean {
+  const model = String(config.model || '').toLowerCase();
+  if (model.includes('deepseek') || model.includes('zai') || model.includes('z.ai') || model.includes('glm-')) {
+    return true;
+  }
+  const baseUrl = String(config.base_url || '').trim();
+  if (!baseUrl) return false;
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    return hostname === 'api.deepseek.com'
+      || hostname.endsWith('.deepseek.com')
+      || hostname === 'api.z.ai'
+      || hostname.endsWith('.z.ai')
+      || hostname === 'open.bigmodel.cn'
+      || hostname.endsWith('.bigmodel.cn')
+      || hostname.endsWith('.volces.com');
+  } catch {
+    const lower = baseUrl.toLowerCase();
+    return lower.includes('deepseek') || lower.includes('z.ai') || lower.includes('bigmodel') || lower.includes('volces');
+  }
+}
+
 function buildAnthropicProvider(config: ResolvedViewLlmConfig): ReturnType<typeof createAnthropic> {
+  const fetch = config.provider === 'anthropic' && needsUnsignedThinkingPatch(config)
+    ? createAnthropicFetchPatch(config)
+    : globalThis.fetch;
+
   return createAnthropic({
     baseURL: config.base_url,
     apiKey: config.api_key,
     headers: config.api_version ? { 'anthropic-version': config.api_version } : undefined,
     name: 'lore-anthropic',
-    fetch: createAnthropicFetchPatch(config),
+    fetch,
   });
 }
 
