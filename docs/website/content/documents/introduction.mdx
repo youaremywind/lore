@@ -1,0 +1,31 @@
+Lore gives AI agents one shared long-term memory system.
+
+It replaces the pattern of copying rules into every local `CLAUDE.md`, `AGENTS.md`, and plugin file. Instead, agents read and write a single memory graph that survives sessions, runtimes, and machines.
+
+## The short version
+
+- **Boot memory** provides stable startup context such as shared agent rules, user preferences, and runtime-specific constraints.
+- **Recall** provides task-specific candidate memories for the current prompt.
+- **Agents should open recalled nodes** before treating them as facts.
+- **Durable changes should be written back into Lore**, not copied into every local agent file.
+- **Dream** helps review and improve memory quality, but important changes still need human review.
+
+## How agents use Lore
+
+```text
+Startup  →  Load boot context (core rules, preferences, channel rules)
+Prompt   →  Receive recall candidates for the current task
+Work     →  Open relevant nodes, use them as context
+Write    →  Save durable facts, decisions, and rules back to Lore
+Review   →  Dream checks memory quality, suggests improvements
+```
+
+## What to read next
+
+Start with the three concept pages if you are new to Lore:
+
+1. [What Lore is for](/documents/introduction/what-lore-is-for)
+2. [How Lore works](/documents/introduction/how-lore-works)
+3. [When to use it](/documents/introduction/when-to-use-it)
+
+Then read the memory model pages when you are ready to write better memories: paths, disclosure triggers, priority, and glossary terms.

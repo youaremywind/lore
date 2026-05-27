@@ -1,6 +1,12 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const themeMock = vi.hoisted(() => ({
+  auroraBackgroundEnabled: false,
+  toggleAuroraBackground: vi.fn(),
+  toggleTheme: vi.fn(),
+}));
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/memory',
@@ -47,18 +53,30 @@ vi.mock('../../lib/i18n', () => ({
 }));
 
 vi.mock('../../lib/theme', () => ({
-  useTheme: () => ({ theme: 'light', toggleTheme: vi.fn() }),
+  useTheme: () => ({
+    auroraBackgroundEnabled: themeMock.auroraBackgroundEnabled,
+    theme: 'light',
+    toggleAuroraBackground: themeMock.toggleAuroraBackground,
+    toggleTheme: themeMock.toggleTheme,
+  }),
 }));
 
 vi.mock('../ui', () => ({
+  AuroraBackdrop: () => <div data-aurora-background="true" />,
   AppUIProvider: ({ children }: { children: React.ReactNode }) => <div data-app-ui-provider="true">{children}</div>,
   Button: ({ children }: { children: React.ReactNode }) => <button>{children}</button>,
 }));
 
-import { NavDock, navIndicatorClassName } from '../AppShell';
+import { AppShellFrame, NavDock, navIndicatorClassName } from '../AppShell';
 import { AppUIProvider } from '../ui';
 
 describe('AppShell theme contrast', () => {
+  beforeEach(() => {
+    themeMock.auroraBackgroundEnabled = false;
+    themeMock.toggleAuroraBackground.mockClear();
+    themeMock.toggleTheme.mockClear();
+  });
+
   it('passes the app theme through the self-owned UI provider bridge', () => {
     const html = renderToStaticMarkup(<AppUIProvider><div>content</div></AppUIProvider>);
 
@@ -76,8 +94,9 @@ describe('AppShell theme contrast', () => {
     expect(html).toContain('bottom-3');
     expect(html).toContain('md:bottom-auto');
     expect(html).toContain('md:top-4');
-    expect(html).not.toContain('Enable Aurora Background');
+    expect(html).toContain('Enable Aurora Background');
     expect(html).not.toContain('Disable Aurora Background');
+    expect(html).toContain('aria-pressed="false"');
     expect(html).toContain('bg-[var(--dock-bg-mobile)]');
     expect(html).toContain('md:bg-[var(--dock-bg)]');
     expect(html).not.toContain('bg-bg-elevated/80');
@@ -92,5 +111,38 @@ describe('AppShell theme contrast', () => {
     expect(html).toContain('md:shrink-0 md:px-3.5 md:py-2 md:text-[13.5px]');
     expect(html).toContain('h-9 w-9 md:h-8 md:w-8');
     expect(html).toContain('hidden md:flex items-center gap-2');
+  });
+
+  it('renders the aurora nav toggle as active when enabled', () => {
+    themeMock.auroraBackgroundEnabled = true;
+
+    const html = renderToStaticMarkup(<NavDock />);
+
+    expect(html).toContain('Disable Aurora Background');
+    expect(html).not.toContain('Enable Aurora Background');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('bg-sys-blue/15');
+  });
+
+  it('keeps the workspace aurora backdrop disabled by default', () => {
+    const html = renderToStaticMarkup(
+      <AppShellFrame auroraBackgroundEnabled={false}>
+        <main>Workspace</main>
+      </AppShellFrame>,
+    );
+
+    expect(html).toContain('Workspace');
+    expect(html).not.toContain('data-aurora-background="true"');
+  });
+
+  it('renders the workspace aurora backdrop when enabled', () => {
+    const html = renderToStaticMarkup(
+      <AppShellFrame auroraBackgroundEnabled>
+        <main>Workspace</main>
+      </AppShellFrame>,
+    );
+
+    expect(html).toContain('Workspace');
+    expect(html).toContain('data-aurora-background="true"');
   });
 });

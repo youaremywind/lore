@@ -1,0 +1,296 @@
+Manual configuration is for installations where you do not want the installer to make every choice for you. Use it when you are deploying Lore on a remote host, connecting to an existing database, or installing only selected agent integrations.
+
+You will configure four things:
+
+| Layer | What you set up | Result |
+| --- | --- | --- |
+| Server | Database URL, optional auth token, cache, and file storage | Lore Web starts and exposes `/setup` and `/api/mcp` |
+| Runtime settings | Embedding, View LLM, boot memory, recall, Dream, and backup settings | Lore can search, view, and maintain memory |
+| Shared client config | Server URL and token for local hooks | Local integrations know where Lore is |
+| Agent runtime | MCP endpoint, environment variables, and runtime-specific hooks | Agents can load boot memory and use recall |
+
+Keep server secrets on the server, and keep agent-specific configuration in the agent runtime. A client config should not contain `DATABASE_URL`; a server `.env` should not contain Claude, Codex, or OpenClaw hook settings.
+
+## Before you start
+
+You need:
+
+- a machine that can run Lore Web;
+- PostgreSQL with `pgvector` available, either bundled through Docker Compose or managed by you;
+- optional Redis for shared cache;
+- an API token if the server should not be open on your network;
+- one or more agent runtimes to connect after setup.
+
+## Start the server with Docker Compose
+
+For the standard Docker Compose deployment, create a `.env` next to `docker-compose.yml`:
+
+```env
+TZ=Asia/Shanghai
+
+POSTGRES_DB=lore
+POSTGRES_USER=lore
+POSTGRES_PASSWORD=change-me
+POSTGRES_PORT=55439
+POSTGRES_DATA_DIR=./data/postgres
+
+DATABASE_URL=postgresql://lore:change-me@postgres:5432/lore
+WEB_PORT=18901
+API_TOKEN=
+LORE_DB_POOL_SIZE=10
+
+REDIS_URL=redis://redis:6379/0
+REDIS_DATA_DIR=./data/redis
+CACHE_KEY_PREFIX=lore
+CACHE_LOCAL_MAX_ITEMS=2000
+
+SNAPSHOT_DATA_DIR=./data/snapshots
+
+LORE_POSTGRES_IMAGE=fffattiger/pgvector-zhparser:pg16
+LORE_REDIS_IMAGE=redis:7-alpine
+LORE_FRONTEND_IMAGE=fffattiger/lore:latest
+```
+
+Start Lore:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/docker-compose.yml -o docker-compose.yml
+docker compose up -d
+docker compose ps
+curl -fsS http://127.0.0.1:18901/api/health
+```
+
+If you set `API_TOKEN`, use the same token when you open the Web Console and when you configure MCP or hooks.
+
+## Start the server without bundled PostgreSQL
+
+Use this path when you already operate PostgreSQL yourself. Point Lore Web at that database:
+
+```env
+DATABASE_URL=postgresql://lore:change-me@db.example.com:5432/lore
+API_TOKEN=YOUR_SERVER_TOKEN_IF_USED
+REDIS_URL=redis://redis.example.com:6379/0
+CACHE_KEY_PREFIX=lore
+CACHE_LOCAL_MAX_ITEMS=2000
+LORE_DB_POOL_SIZE=10
+```
+
+The database role should be allowed to create the schema and required extensions during first startup. If your production role is restricted, run the first startup with a migration-capable role, then switch to the restricted role after the schema exists.
+
+Start Lore (still using Docker Compose for the Web and Redis containers, pointing at your external database):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/docker-compose.yml -o docker-compose.yml
+# Remove or comment out the postgres service block in docker-compose.yml,
+# or leave your DATABASE_URL pointing at the external host.
+docker compose up -d
+docker compose ps
+curl -fsS http://127.0.0.1:18901/api/health
+```
+
+Lore also needs writable storage for backups and review changesets. In Docker Compose this is provided by `SNAPSHOT_DATA_DIR`. In a custom deployment, mount persistent storage at the path used by the container image.
+
+## Complete `/setup`
+
+After the server is healthy, open:
+
+```text
+http://127.0.0.1:18901/setup
+```
+
+Complete these steps in order:
+
+1. **Embedding setup** — choose an OpenAI-compatible embedding endpoint.
+2. **View LLM setup** — choose OpenAI-compatible chat, OpenAI Responses, or Anthropic Messages.
+3. **Boot memory setup** — review the startup memories that agents will receive.
+4. **Final check** — confirm setup is complete before connecting agents.
+
+You can also save settings through the API:
+
+```bash
+curl -fsS -X PUT http://127.0.0.1:18901/api/settings \
+  -H 'content-type: application/json' \
+  -H 'authorization: Bearer YOUR_SERVER_TOKEN_IF_USED' \
+  --data '{
+    "patch": {
+      "embedding.provider": "openai_compatible",
+      "embedding.base_url": "http://host.docker.internal:8090/v1",
+      "embedding.api_key": "YOUR_EMBEDDING_KEY",
+      "embedding.model": "text-embedding-3-small",
+      "view_llm.provider": "openai_compatible",
+      "view_llm.base_url": "http://host.docker.internal:8090/v1",
+      "view_llm.api_key": "YOUR_LLM_KEY",
+      "view_llm.model": "deepseek-v4-flash"
+    }
+  }'
+```
+
+Skip the `authorization` header only when your server has no `API_TOKEN`.
+
+## Create shared client config
+
+Claude Code and Codex hooks can read the same local Lore config. Create `~/.lore/config.json` on the machine where the agents run:
+
+```json
+{
+  "base_url": "http://127.0.0.1:18901",
+  "api_token": "YOUR_TOKEN_IF_USED",
+  "docker_managed": false
+}
+```
+
+Rules:
+
+- `base_url` is the Lore server origin without a trailing slash;
+- omit `api_token` when the server has no `API_TOKEN`;
+- keep `docker_managed` false when you manage the server yourself.
+
+## Connect Claude Code
+
+Claude Code hooks read the shared `~/.lore/config.json`. If you configure Claude MCP manually, register the HTTP endpoint with a bearer header when the server uses `API_TOKEN`:
+
+```bash
+claude mcp remove lore || true
+claude mcp add --transport http --scope user \
+  --header "Authorization: Bearer YOUR_TOKEN_IF_USED" \
+  lore "http://127.0.0.1:18901/api/mcp?client_type=claudecode"
+```
+
+For an unprotected local server, omit the `--header` option.
+
+If you install the Claude Code plugin by hand, clone the Lore repository and copy its guidance file, then import it from `~/.claude/CLAUDE.md`:
+
+```bash
+git clone https://github.com/FFatTiger/lore.git /tmp/lore-plugin
+mkdir -p ~/.claude
+cp /tmp/lore-plugin/packages/claudecode-plugin/rules/lore-guidance.md ~/.claude/lore-guidance.md
+printf '@~/.claude/lore-guidance.md\n' >> ~/.claude/CLAUDE.md
+```
+
+The exact plugin path may differ by release. Check the Lore repository for the current plugin layout.
+
+Restart Claude Code after changing settings, plugin files, or `CLAUDE.md`.
+
+## Connect Codex
+
+Enable plugins and hooks in `~/.codex/config.toml`:
+
+```toml
+[plugins."lore@lore"]
+enabled = true
+
+[features]
+hooks = true
+```
+
+Register MCP without server auth:
+
+```bash
+codex mcp remove lore || true
+codex mcp add lore --url "http://127.0.0.1:18901/api/mcp?client_type=codex"
+```
+
+Register MCP with server auth by keeping the URL plain and storing the bearer header in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.lore]
+url = "http://127.0.0.1:18901/api/mcp?client_type=codex"
+http_headers = { Authorization = "Bearer YOUR_TOKEN_IF_USED" }
+```
+
+Install Codex hooks from the plugin package when you need startup boot memory and per-prompt recall. Hooks read `~/.lore/config.json`, so no extra token environment variable is required:
+
+```bash
+bash /tmp/lore-plugin/packages/codex-plugin/scripts/install-hooks.sh
+```
+
+Restart Codex, open `/hooks`, and trust the Lore hooks if Codex asks for approval.
+
+## Connect OpenClaw
+
+OpenClaw uses a plugin entry in `~/.openclaw/openclaw.json`:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "lore": {
+        "enabled": true,
+        "config": {
+          "baseUrl": "http://127.0.0.1:18901",
+          "apiToken": "YOUR_TOKEN_IF_USED",
+          "timeoutMs": 30000,
+          "defaultDomain": "core",
+          "injectPromptGuidance": true,
+          "startupHealthcheck": true,
+          "recallEnabled": true,
+          "minDisplayScore": 0.4,
+          "maxDisplayItems": 3,
+          "scorePrecision": 2,
+          "excludeBootFromResults": true
+        }
+      }
+    }
+  }
+}
+```
+
+Restart OpenClaw after editing the plugin entry.
+
+## Connect Pi
+
+Install or symlink the Lore extension into the Pi extension directory. From the cloned Lore repository:
+
+```bash
+PI_CODING_AGENT_DIR="$HOME/.pi/agent" bash /tmp/lore-plugin/packages/pi-extension/scripts/install-local.sh
+```
+
+Pi reads `~/.lore/config.json` by default. If your Pi runtime supports extension config, use it only when you need a per-runtime override:
+
+```json
+{
+  "baseUrl": "http://127.0.0.1:18901",
+  "apiToken": "YOUR_TOKEN_IF_USED",
+  "timeoutMs": 30000,
+  "defaultDomain": "core",
+  "injectPromptGuidance": true,
+  "startupHealthcheck": true,
+  "recallEnabled": true
+}
+```
+
+Run `/reload` inside Pi or restart the runtime.
+
+## Connect Hermes
+
+Hermes reads the Lore server and token from `~/.lore/config.json`:
+
+```json
+{
+  "base_url": "http://127.0.0.1:18901",
+  "api_token": "YOUR_TOKEN_IF_USED"
+}
+```
+
+`LORE_BASE_URL` and `LORE_API_TOKEN` remain fallback environment variables for older setups.
+
+Then link the plugin package into the Hermes plugin directory. From the cloned Lore repository:
+
+```bash
+mkdir -p ~/.hermes/skills
+ln -s /tmp/lore-plugin/packages/hermes-plugin/lore_memory ~/.hermes/skills/lore_memory
+```
+
+Restart Hermes after linking the plugin.
+
+## Verify the result
+
+Before moving real instructions into Lore, check these items:
+
+1. `curl -fsS http://127.0.0.1:18901/api/health` returns success.
+2. `/setup` shows embedding, View LLM, and boot memory complete.
+3. Each agent MCP URL includes the right `client_type`.
+4. Protected servers receive the same bearer token from Web UI, MCP, and hooks.
+5. A new agent session includes boot context.
+6. A realistic project prompt produces a recall block.
+7. Opening a recalled node works in the Web Console.

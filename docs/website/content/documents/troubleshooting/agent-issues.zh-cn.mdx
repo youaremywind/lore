@@ -1,0 +1,17 @@
+Agent 问题通常是本地配置问题，而不是服务器记忆问题。
+
+## 检查什么
+
+检查：
+
+| 运行时 | 重要文件/设置 |
+| --- | --- |
+| Claude Code | `~/.lore/config.json`、`~/.claude/CLAUDE.md`、`~/.claude/lore-guidance.md`、MCP server、插件 hooks |
+| Codex | `~/.lore/config.json`、`~/.codex/config.toml`、`~/.codex/hooks.json`、MCP server、插件启用状态 |
+| OpenClaw | `~/.lore/config.json`、`~/.openclaw/openclaw.json` 插件 entry，以及可选 `baseUrl` / `apiToken` 覆盖 |
+| Pi | `~/.lore/config.json`、`${PI_CODING_AGENT_DIR:-~/.pi/agent}/extensions/lore` 下的扩展 symlink，以及可选插件配置覆盖 |
+| Hermes | `~/.lore/config.json`、插件 symlink，以及可选环境变量兜底 |
+
+修改这些内容后，重启运行时。Hooks 和 MCP 配置通常在进程启动时加载。
+
+如果 MCP 可用但没有出现 recall，检查 hook 配置。如果 recall 出现但 Agent 不使用它，改善本地 guidance，并验证 Agent 会先打开召回节点再依赖内容。

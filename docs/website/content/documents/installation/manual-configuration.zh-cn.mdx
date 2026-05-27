@@ -1,0 +1,296 @@
+手动配置适合不想让安装脚本替你做所有选择的场景。比如：你要把 Lore 部署到远程主机、接入已有数据库，或只安装部分 Agent 集成。
+
+你需要配置四层内容：
+
+| 层级 | 配置什么 | 完成后得到什么 |
+| --- | --- | --- |
+| 服务器 | 数据库 URL、可选认证 token、缓存和文件存储 | Lore Web 启动，并提供 `/setup` 和 `/api/mcp` |
+| 运行时设置 | Embedding、View LLM、启动记忆、召回、Dream 和备份 | Lore 可以搜索、查看和维护记忆 |
+| 共享客户端配置 | 本机 hooks 使用的服务器 URL 和 token | 本机集成知道要连接哪个 Lore 服务器 |
+| Agent 运行时 | MCP endpoint、环境变量和运行时专属 hooks | Agent 可以加载启动记忆并使用召回 |
+
+原则很简单：服务器密钥放在服务器侧，Agent 专属配置放在 Agent 运行时。本地客户端配置不应该包含 `DATABASE_URL`；服务器 `.env` 也不应该塞进 Claude、Codex 或 OpenClaw 的 hook 设置。
+
+## 开始前准备
+
+你需要：
+
+- 一台可以运行 Lore Web 的机器；
+- 可用的 PostgreSQL，并支持 `pgvector`；可以用 Docker Compose 自带的，也可以用你自己的；
+- 可选 Redis，用于共享缓存；
+- 如果服务器不想裸露在网络中，准备一个 API token；
+- 至少一个准备连接的 Agent 运行时。
+
+## 用 Docker Compose 启动服务器
+
+标准 Docker Compose 部署，在 `docker-compose.yml` 旁边创建 `.env`：
+
+```env
+TZ=Asia/Shanghai
+
+POSTGRES_DB=lore
+POSTGRES_USER=lore
+POSTGRES_PASSWORD=change-me
+POSTGRES_PORT=55439
+POSTGRES_DATA_DIR=./data/postgres
+
+DATABASE_URL=postgresql://lore:change-me@postgres:5432/lore
+WEB_PORT=18901
+API_TOKEN=
+LORE_DB_POOL_SIZE=10
+
+REDIS_URL=redis://redis:6379/0
+REDIS_DATA_DIR=./data/redis
+CACHE_KEY_PREFIX=lore
+CACHE_LOCAL_MAX_ITEMS=2000
+
+SNAPSHOT_DATA_DIR=./data/snapshots
+
+LORE_POSTGRES_IMAGE=fffattiger/pgvector-zhparser:pg16
+LORE_REDIS_IMAGE=redis:7-alpine
+LORE_FRONTEND_IMAGE=fffattiger/lore:latest
+```
+
+启动 Lore：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/docker-compose.yml -o docker-compose.yml
+docker compose up -d
+docker compose ps
+curl -fsS http://127.0.0.1:18901/api/health
+```
+
+如果设置了 `API_TOKEN`，打开 Web Console、配置 MCP 和配置 hooks 时都使用同一个 token。
+
+## 不使用自带 PostgreSQL
+
+如果你已经维护 PostgreSQL，让 Lore Web 指向你的数据库：
+
+```env
+DATABASE_URL=postgresql://lore:change-me@db.example.com:5432/lore
+API_TOKEN=YOUR_SERVER_TOKEN_IF_USED
+REDIS_URL=redis://redis.example.com:6379/0
+CACHE_KEY_PREFIX=lore
+CACHE_LOCAL_MAX_ITEMS=2000
+LORE_DB_POOL_SIZE=10
+```
+
+首次启动时，数据库角色需要能创建 schema 和必要扩展。如果生产环境角色权限较低，可以先用有迁移权限的角色完成首次启动，再切换到受限角色。
+
+启动 Lore（仍然用 Docker Compose 运行 Web 和 Redis 容器，指向外部数据库）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/docker-compose.yml -o docker-compose.yml
+# 在 docker-compose.yml 中删除或注释掉 postgres 服务块，
+# 或者保持 DATABASE_URL 指向外部数据库即可。
+docker compose up -d
+docker compose ps
+curl -fsS http://127.0.0.1:18901/api/health
+```
+
+Lore 还需要可写存储，用于备份和待审阅变更。Docker Compose 会通过 `SNAPSHOT_DATA_DIR` 提供这块存储；自定义部署时，请为容器镜像使用的存储路径挂载持久卷。
+
+## 完成 `/setup`
+
+服务器健康后打开：
+
+```text
+http://127.0.0.1:18901/setup
+```
+
+按顺序完成：
+
+1. **Embedding setup** — 选择 OpenAI-compatible embedding 端点。
+2. **View LLM setup** — 选择 OpenAI-compatible chat、OpenAI Responses 或 Anthropic Messages。
+3. **Boot memory setup** — 检查 Agent 会收到的启动记忆。
+4. **Final check** — 确认设置完成后，再连接 Agent。
+
+也可以通过 API 保存设置：
+
+```bash
+curl -fsS -X PUT http://127.0.0.1:18901/api/settings \
+  -H 'content-type: application/json' \
+  -H 'authorization: Bearer YOUR_SERVER_TOKEN_IF_USED' \
+  --data '{
+    "patch": {
+      "embedding.provider": "openai_compatible",
+      "embedding.base_url": "http://host.docker.internal:8090/v1",
+      "embedding.api_key": "YOUR_EMBEDDING_KEY",
+      "embedding.model": "text-embedding-3-small",
+      "view_llm.provider": "openai_compatible",
+      "view_llm.base_url": "http://host.docker.internal:8090/v1",
+      "view_llm.api_key": "YOUR_LLM_KEY",
+      "view_llm.model": "deepseek-v4-flash"
+    }
+  }'
+```
+
+只有服务器没有 `API_TOKEN` 时，才省略 `authorization` 头。
+
+## 创建共享客户端配置
+
+Claude Code 和 Codex hooks 可以读取同一个本机配置。在运行 Agent 的机器上创建 `~/.lore/config.json`：
+
+```json
+{
+  "base_url": "http://127.0.0.1:18901",
+  "api_token": "YOUR_TOKEN_IF_USED",
+  "docker_managed": false
+}
+```
+
+规则：
+
+- `base_url` 是 Lore 服务器 origin，不带末尾斜杠；
+- 服务器没有 `API_TOKEN` 时，省略 `api_token`；
+- 自己管理服务器时，保持 `docker_managed` 为 false。
+
+## 连接 Claude Code
+
+Claude Code hooks 会读取共享的 `~/.lore/config.json`。如果手动配置 Claude MCP，服务器启用 `API_TOKEN` 时用标准 bearer header 注册 HTTP endpoint：
+
+```bash
+claude mcp remove lore || true
+claude mcp add --transport http --scope user \
+  --header "Authorization: Bearer YOUR_TOKEN_IF_USED" \
+  lore "http://127.0.0.1:18901/api/mcp?client_type=claudecode"
+```
+
+如果本地服务器未启用认证，省略 `--header`。
+
+如果手动安装 Claude Code 插件，克隆 Lore 仓库并复制 guidance 文件，然后从 `~/.claude/CLAUDE.md` 导入：
+
+```bash
+git clone https://github.com/FFatTiger/lore.git /tmp/lore-plugin
+mkdir -p ~/.claude
+cp /tmp/lore-plugin/packages/claudecode-plugin/rules/lore-guidance.md ~/.claude/lore-guidance.md
+printf '@~/.claude/lore-guidance.md\n' >> ~/.claude/CLAUDE.md
+```
+
+插件具体路径可能随版本变化，请以 Lore 仓库中的实际布局为准。
+
+修改 settings、插件文件或 `CLAUDE.md` 后，重启 Claude Code。
+
+## 连接 Codex
+
+在 `~/.codex/config.toml` 启用插件和 hooks：
+
+```toml
+[plugins."lore@lore"]
+enabled = true
+
+[features]
+hooks = true
+```
+
+无服务器认证时注册 MCP：
+
+```bash
+codex mcp remove lore || true
+codex mcp add lore --url "http://127.0.0.1:18901/api/mcp?client_type=codex"
+```
+
+有服务器认证时注册 MCP，URL 保持纯净，把 bearer header 写进 `~/.codex/config.toml`：
+
+```toml
+[mcp_servers.lore]
+url = "http://127.0.0.1:18901/api/mcp?client_type=codex"
+http_headers = { Authorization = "Bearer YOUR_TOKEN_IF_USED" }
+```
+
+如果需要启动记忆和每次 prompt 召回，从插件包安装 Codex hooks。Hooks 会读取 `~/.lore/config.json`，不再需要额外 token 环境变量：
+
+```bash
+bash /tmp/lore-plugin/packages/codex-plugin/scripts/install-hooks.sh
+```
+
+重启 Codex，打开 `/hooks`，如果 Codex 要求确认，信任 Lore hooks。
+
+## 连接 OpenClaw
+
+OpenClaw 使用 `~/.openclaw/openclaw.json` 里的插件 entry：
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "lore": {
+        "enabled": true,
+        "config": {
+          "baseUrl": "http://127.0.0.1:18901",
+          "apiToken": "YOUR_TOKEN_IF_USED",
+          "timeoutMs": 30000,
+          "defaultDomain": "core",
+          "injectPromptGuidance": true,
+          "startupHealthcheck": true,
+          "recallEnabled": true,
+          "minDisplayScore": 0.4,
+          "maxDisplayItems": 3,
+          "scorePrecision": 2,
+          "excludeBootFromResults": true
+        }
+      }
+    }
+  }
+}
+```
+
+编辑插件 entry 后重启 OpenClaw。
+
+## 连接 Pi
+
+把 Lore 扩展安装或 symlink 到 Pi 扩展目录。从克隆的 Lore 仓库执行：
+
+```bash
+PI_CODING_AGENT_DIR="$HOME/.pi/agent" bash /tmp/lore-plugin/packages/pi-extension/scripts/install-local.sh
+```
+
+Pi 默认读取 `~/.lore/config.json`。如果 Pi 运行时支持扩展配置，只在需要单独覆盖该运行时时使用：
+
+```json
+{
+  "baseUrl": "http://127.0.0.1:18901",
+  "apiToken": "YOUR_TOKEN_IF_USED",
+  "timeoutMs": 30000,
+  "defaultDomain": "core",
+  "injectPromptGuidance": true,
+  "startupHealthcheck": true,
+  "recallEnabled": true
+}
+```
+
+在 Pi 内运行 `/reload`，或重启运行时。
+
+## 连接 Hermes
+
+Hermes 从 `~/.lore/config.json` 读取 Lore 服务器和 token：
+
+```json
+{
+  "base_url": "http://127.0.0.1:18901",
+  "api_token": "YOUR_TOKEN_IF_USED"
+}
+```
+
+`LORE_BASE_URL` 和 `LORE_API_TOKEN` 保留为旧配置的兜底环境变量。
+
+然后把插件包链接到 Hermes 插件目录。从克隆的 Lore 仓库执行：
+
+```bash
+mkdir -p ~/.hermes/skills
+ln -s /tmp/lore-plugin/packages/hermes-plugin/lore_memory ~/.hermes/skills/lore_memory
+```
+
+链接插件后重启 Hermes。
+
+## 验证结果
+
+把真实指令迁移进 Lore 前，先检查：
+
+1. `curl -fsS http://127.0.0.1:18901/api/health` 返回成功。
+2. `/setup` 显示 embedding、View LLM 和 boot memory 已完成。
+3. 每个 Agent 的 MCP URL 都包含正确的 `client_type`。
+4. 受保护服务器能从 Web UI、MCP 和 hooks 收到同一个 bearer token。
+5. 新 Agent 会话能看到启动上下文。
+6. 真实项目 prompt 会产生召回块。
+7. 能在 Web Console 打开召回到的记忆节点。

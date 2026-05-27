@@ -145,23 +145,7 @@ function normalizeAssistantContent(
 function isNonSigningAnthropicEndpoint(config: ResolvedViewLlmConfig): boolean {
   if (config.provider !== 'anthropic') return false;
   const model = String(config.model || '').toLowerCase();
-  if (model.includes('deepseek') || model.includes('zai') || model.includes('z.ai') || model.includes('glm-')) {
-    return true;
-  }
-  const baseUrl = String(config.base_url || '').trim();
-  if (!baseUrl) return false;
-  try {
-    const hostname = new URL(baseUrl).hostname.toLowerCase();
-    return hostname === 'api.deepseek.com'
-      || hostname.endsWith('.deepseek.com')
-      || hostname === 'api.z.ai'
-      || hostname.endsWith('.z.ai')
-      || hostname === 'open.bigmodel.cn'
-      || hostname.endsWith('.bigmodel.cn');
-  } catch {
-    const lower = baseUrl.toLowerCase();
-    return lower.includes('deepseek') || lower.includes('z.ai') || lower.includes('bigmodel');
-  }
+  return model.includes('deepseek') || model.includes('zai') || model.includes('z.ai') || model.includes('glm-');
 }
 
 function buildProviderPromptOptions(config: ResolvedViewLlmConfig): BuildProviderPromptOptions {

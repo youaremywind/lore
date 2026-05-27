@@ -1,0 +1,30 @@
+安装后先验证边界，再开始迁移本地 Agent 指令。
+
+## 验证清单
+
+先检查服务器：
+
+```bash
+curl -fsS http://127.0.0.1:18901/api/health
+```
+
+然后打开 Web Console 检查：
+
+| 区域 | 验证什么 |
+| --- | --- |
+| `/setup` | 设置已完成，模型端点已保存 |
+| `/memory` | 启动记忆和域可见 |
+| `/recall` | 真实查询能返回候选或明确的空结果 |
+| settings | embedding、View LLM、召回、备份和认证值与你的部署一致 |
+
+Agent 检查：
+
+1. 安装或修改配置后，重启运行时。
+2. 确认 Lore MCP 服务器出现在该运行时中。
+3. 让 Agent 加载启动记忆，或调用 `lore_status`。
+4. 发一个真实项目 prompt，检查是否出现 `<recall>` 块。
+5. 如果召回行出现，在依赖它之前先打开记忆节点。
+
+Codex 用户打开 `/hooks`，如果提示确认，信任 Lore hooks。Claude Code 用户确认 `~/.claude/CLAUDE.md` 导入了 `@~/.claude/lore-guidance.md`。两个运行时都应共用 `~/.lore/config.json` 中的 Lore server URL 和 token。
+
+如果其中某项失败，不要先调召回阈值。先修复对应边界：服务器、数据库、设置、认证、Agent 配置或 hooks。

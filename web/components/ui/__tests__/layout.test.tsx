@@ -8,12 +8,23 @@ vi.mock('@lobehub/ui/es/Block/index', () => ({
   ),
 }));
 
+vi.mock('@lobehub/ui/awesome', () => ({
+  AuroraBackground: ({ className, classNames, styles }: { className?: string; classNames?: { content?: string }; styles?: { content?: React.CSSProperties } }) => (
+    <div
+      className={className}
+      data-aurora-background="true"
+      data-content-class={classNames?.content}
+      data-content-display={styles?.content?.display}
+    />
+  ),
+}));
+
 vi.mock('../controls', () => ({
   Spinner: ({ size }: { size?: string }) => <span data-spinner-size={size || 'md'} />,
   surfaceCardClassName: 'rounded-2xl border border-separator-thin bg-bg-elevated shadow-card',
 }));
 
-import { ActionPanel, Card, InlineMeta, LoadingBlock, PageCanvas, Section, surfaceCardClassName } from '../layout';
+import { ActionPanel, AuroraBackdrop, Card, InlineMeta, LoadingBlock, PageCanvas, Section, surfaceCardClassName } from '../layout';
 
 describe('ui layout Card', () => {
   it('renders through Lobe Block with default padding 16', () => {
@@ -95,5 +106,14 @@ describe('ui layout Card', () => {
     expect(html).toContain('pt-6');
     expect(html).toContain('pb-24');
     expect(html).toContain('md:py-14');
+  });
+
+  it('wraps the Lobe aurora background as a hidden backdrop primitive', () => {
+    const html = renderToStaticMarkup(<AuroraBackdrop />);
+
+    expect(html).toContain('data-aurora-background="true"');
+    expect(html).toContain('absolute inset-0 h-full w-full');
+    expect(html).toContain('data-content-class="hidden"');
+    expect(html).toContain('data-content-display="none"');
   });
 });

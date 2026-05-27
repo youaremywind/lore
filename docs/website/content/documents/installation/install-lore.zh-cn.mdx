@@ -1,0 +1,68 @@
+如果你想最快得到一个可用的 Lore 服务器和本机 Agent 集成，使用安装器。
+
+## 前置条件
+
+- **Docker** 并带 Compose 插件（`docker compose`）。macOS 上 Docker Desktop 已包含两者。Linux 上需安装 Docker Engine 和 `docker compose` 插件。
+- 至少一个要连接的 Agent 运行时（Claude Code、Codex、Pi、OpenClaw 或 Hermes）。
+- 一个 **OpenAI 兼容的 API key** 用于 embedding（例如 OpenAI、DeepSeek 或本地服务）。安装完成后在 `/setup` 中配置。没有它，语义召回和 Dream 无法工作。
+
+## 运行安装器
+
+默认安装会用 Docker Compose 启动 Lore，写入本机客户端配置，并配置这台机器上支持的 Agent 渠道。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/scripts/install.sh | bash
+```
+
+中文安装器：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/scripts/install.zh.sh | bash
+```
+
+## 安装器做了什么
+
+- 从 Lore 仓库下载 `docker-compose.yml` 和 `.env` 模板。
+- 启动 Lore 服务器、PostgreSQL 和 Redis 容器。
+- 等待服务器健康检查通过。
+- 创建 `~/.lore/config.json`，写入服务器 URL 和 token。
+- 为选中的 Agent 渠道安装 MCP 配置和 hooks。
+- 将 Lore 使用指南写入 `~/.claude/lore-guidance.md`（Claude Code）或其他运行时的对应位置。
+
+安装完成后可以查看 `~/.lore/` 目录确认写入了哪些文件。
+
+## 常用选项
+
+| 选项 | 什么时候用 |
+| --- | --- |
+| `--channels claudecode,codex` | 只安装选中的集成。 |
+| `--base-url http://host:18901` | Lore 已经在别处运行。这个选项会跳过服务器启动。 |
+| `--api-token TOKEN` | 服务器启用了 `API_TOKEN`。 |
+| `--skip-docker` | 只安装本机客户端集成。 |
+| `--pre` | 使用 `pre-latest` 发布通道。 |
+| `--dev` | 使用 `dev-latest` 发布通道。 |
+| `--force` | 即使版本看起来已是最新，也重新安装。 |
+
+## 示例
+
+只安装 Codex 和 Claude Code 集成：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/scripts/install.sh | bash -s -- --channels codex,claudecode
+```
+
+把这台机器的 Agent 指向已有 Lore 服务器：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/scripts/install.sh | bash -s -- --base-url http://192.168.1.100:18901 --api-token YOUR_TOKEN
+```
+
+## 安装后做什么
+
+1. 如果不是连接已有服务器，打开 `http://127.0.0.1:18901/setup`。
+2. 完成 embedding、View LLM 和 boot memory 设置。
+3. 重启刚安装集成的 Agent 运行时。
+4. Codex 用户运行 `codex mcp list` 确认 Lore 已注册，然后打开 Codex 会话输入 `/hooks`，如果提示确认，信任 Lore hooks。
+5. 发一个真实任务 prompt，确认能看到召回块。
+
+如果你不想让安装器管理服务器或客户端，使用 [手动配置](/zh-cn/documents/installation/manual-configuration)。

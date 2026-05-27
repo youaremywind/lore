@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "defaultPath": "introduction",
+  "contentRoot": "content/documents",
+  "locales": [
+    "en",
+    "zh-cn"
+  ],
+  "source": "LoreHub 使用的 Lore 公共中文文档。",
+  "parents": [
+    {
+      "category": "概念",
+      "description": "理解 Lore 的长期记忆模型：持久路径、披露触发条件、召回和 Dream 维护。",
+      "path": "introduction",
+      "navTitle": "概念",
+      "title": "概念",
+      "children": [
+        {
+          "path": "introduction/what-lore-is-for",
+          "title": "Lore 适合保存什么",
+          "description": "了解哪些事实、偏好、决策和规则应该成为持久记忆。"
+        },
+        {
+          "path": "introduction/how-lore-works",
+          "title": "Lore 如何工作",
+          "description": "理解启动上下文、召回、读取记忆、写入持久变更和审阅的循环。"
+        },
+        {
+          "path": "introduction/when-to-use-it",
+          "title": "什么时候使用 Lore",
+          "description": "判断哪些信息值得保存，哪些短期笔记不需要进入记忆。"
+        },
+        {
+          "path": "memory-system",
+          "title": "记忆模型",
+          "description": "了解路径、域、优先级、披露、术语和生成视图这些核心记忆结构。"
+        },
+        {
+          "path": "memory-system/memory-paths",
+          "title": "记忆路径",
+          "description": "使用稳定的记忆路径和域，让记忆便于浏览、链接和移动。"
+        },
+        {
+          "path": "memory-system/disclosure-triggers",
+          "title": "披露触发条件",
+          "description": "写清楚触发条件，让 Lore 知道什么时候应该展示某条记忆。"
+        },
+        {
+          "path": "memory-system/priority-levels",
+          "title": "优先级",
+          "description": "用优先级标记重要性，同时避免让召回结果变吵。"
+        },
+        {
+          "path": "memory-system/glossary-terms",
+          "title": "术语",
+          "description": "添加产品名、别名和缩写，帮助召回找到正确记忆。"
+        },
+        {
+          "path": "recall",
+          "title": "召回",
+          "description": "理解 Lore 如何检索与任务相关的记忆候选，以及为什么 Agent 需要先打开节点再引用。"
+        },
+        {
+          "path": "dream",
+          "title": "Dream",
+          "description": "把 Dream 理解为清理和提升记忆质量的审阅流程。"
+        }
+      ]
+    },
+    {
+      "category": "安装",
+      "description": "安装 Lore，选择合适的数据库形态，完成设置，并在连接 Agent 前验证服务器可用。",
+      "path": "installation",
+      "navTitle": "安装",
+      "title": "安装 Lore",
+      "children": [
+        {
+          "path": "installation/install-lore",
+          "title": "快速安装",
+          "description": "使用安装器通过 Docker 启动 Lore，或把客户端连接到已有的 Lore 服务器。"
+        },
+        {
+          "path": "installation/manual-configuration",
+          "title": "手动配置",
+          "description": "不使用安装脚本时，手动配置 Lore 服务器和 Agent 集成。"
+        },
+        {
+          "path": "installation/use-your-own-postgresql",
+          "title": "使用自己的 PostgreSQL",
+          "description": "让 Lore 连接已有 PostgreSQL 实例，并配置 pgvector 与可选中文全文搜索扩展。"
+        },
+        {
+          "path": "installation/first-run-setup",
+          "title": "首次运行设置",
+          "description": "打开 /setup，配置模型端点，初始化启动记忆，并重启已连接的运行时。"
+        },
+        {
+          "path": "configuration/essential-settings",
+          "title": "关键设置",
+          "description": "配置日常运行需要的服务器认证、Embedding、View LLM、Redis 缓存和备份默认值。"
+        },
+        {
+          "path": "installation/verify-the-install",
+          "title": "验证安装",
+          "description": "设置完成后检查健康状态、迁移、Web Console、召回和 Agent 连接。"
+        },
+        {
+          "path": "installation/move-agent-instructions-to-lore",
+          "title": "把本地 Agent 文档迁移到 Lore",
+          "description": "把重复的 CLAUDE.md 与 AGENTS.md 内容迁移到共享、项目专属和渠道专属的 Lore 记忆。"
+        }
+      ]
+    },
+    {
+      "category": "连接 Agent",
+      "description": "把 Codex、Claude Code、Pi、OpenClaw、Hermes 或任意 MCP 客户端连接到同一个 Lore 记忆图谱。",
+      "path": "runtime-integrations",
+      "navTitle": "连接 Agent",
+      "title": "连接 Agent",
+      "children": [
+        {
+          "path": "runtime-integrations/choose-runtimes",
+          "title": "选择运行时",
+          "description": "选择哪些 Agent 运行时应该共享同一套 Lore 记忆图谱。"
+        },
+        {
+          "path": "runtime-integrations/connect-an-agent",
+          "title": "连接一个 Agent",
+          "description": "使用安装器和指定 channel、服务器 URL、API token 来连接 Agent。"
+        },
+        {
+          "path": "runtime-integrations/what-agents-receive",
+          "title": "Agent 会收到什么",
+          "description": "理解启动记忆、召回候选、MCP 工具和使用记录。"
+        }
+      ]
+    },
+    {
+      "category": "使用 Lore",
+      "description": "使用 Web Console 和日常操作手册写入、检查、调优、备份和清理记忆。",
+      "path": "web-ui",
+      "navTitle": "使用 Lore",
+      "title": "使用 Lore",
+      "children": [
+        {
+          "path": "web-ui/main-pages",
+          "title": "Web Console",
+          "description": "了解 Lore Web Console 中每个主页面的用途。"
+        },
+        {
+          "path": "web-ui/recommended-routine",
+          "title": "推荐例行流程",
+          "description": "按简单流程进行记忆审阅、召回检查、Dream 和备份。"
+        },
+        {
+          "path": "operating-playbooks/write-a-durable-memory",
+          "title": "写入持久记忆",
+          "description": "用路径、优先级、披露触发条件、术语和内容保存一条有用记忆。"
+        },
+        {
+          "path": "recall/use-recall-in-chat",
+          "title": "在聊天中使用召回",
+          "description": "把召回块当作记忆线索，先打开有用记忆再引用。"
+        },
+        {
+          "path": "recall/read-recall-results",
+          "title": "阅读召回结果",
+          "description": "理解召回 UI 中的评分、候选、查询详情和使用状态。"
+        },
+        {
+          "path": "recall/improve-recall-quality",
+          "title": "提升召回质量",
+          "description": "调优术语、披露触发条件、优先级、生成视图和记忆结构。"
+        },
+        {
+          "path": "configuration/recall-settings",
+          "title": "召回设置",
+          "description": "调整展示阈值、项目数量、匹配权重、查询限制和超时时间。"
+        },
+        {
+          "path": "dream/run-dream-safely",
+          "title": "安全运行 Dream",
+          "description": "手动运行 Dream，审阅输出，并让维护过程保持可控。"
+        },
+        {
+          "path": "dream/review-changes",
+          "title": "审阅 Dream 变更",
+          "description": "从范围、触发条件质量、术语、安全性和可追溯性评估 Dream 建议。"
+        },
+        {
+          "path": "configuration/dream-and-backup",
+          "title": "Dream 与备份设置",
+          "description": "在进行更重的记忆维护前选择安全的 Dream 和备份默认值。"
+        },
+        {
+          "path": "operating-playbooks/check-recall-quality",
+          "title": "检查召回质量",
+          "description": "运行真实查询并检查记忆为什么出现或没有出现。"
+        },
+        {
+          "path": "operating-playbooks/back-up-memory",
+          "title": "备份记忆",
+          "description": "在维护、迁移或大范围清理前创建并验证备份。"
+        },
+        {
+          "path": "operating-playbooks/clean-up-old-memory",
+          "title": "清理旧记忆",
+          "description": "拆分、移动、删除和审阅已经过期或过宽的记忆。"
+        },
+        {
+          "path": "operating-playbooks/prepare-a-new-project",
+          "title": "准备新项目",
+          "description": "创建包含概览、命令、约束和术语的项目记忆分支。"
+        }
+      ]
+    },
+    {
+      "category": "故障排查",
+      "description": "修复常见的设置、召回、Dream、登录和 Agent 连接问题。",
+      "path": "troubleshooting",
+      "title": "故障排查",
+      "children": [
+        {
+          "path": "troubleshooting/setup-issues",
+          "title": "设置问题",
+          "description": "检查服务器地址、设置状态、健康检查、迁移和认证问题。"
+        },
+        {
+          "path": "troubleshooting/recall-issues",
+          "title": "召回问题",
+          "description": "修复记忆缺失、结果噪声、召回缓慢和查询输出困惑。"
+        },
+        {
+          "path": "troubleshooting/agent-issues",
+          "title": "Agent 问题",
+          "description": "修复启动上下文、召回 hooks、MCP 工具和过期 Agent 记忆。"
+        },
+        {
+          "path": "reference/common-questions",
+          "title": "常见问题",
+          "description": "关于日常 Lore 使用决策的简短回答。"
+        },
+        {
+          "path": "reference/memory-writing-tips",
+          "title": "记忆写作建议",
+          "description": "使用实用清单和示例写出合适的持久记忆。"
+        },
+        {
+          "path": "reference/glossary",
+          "title": "术语表",
+          "description": "理解 Lore 文档中的核心术语。"
+        }
+      ]
+    }
+  ],
+  "navSections": [
+    {
+      "title": "文档",
+      "paths": [
+        "introduction",
+        "installation",
+        "runtime-integrations",
+        "web-ui",
+        "troubleshooting"
+      ]
+    }
+  ]
+}

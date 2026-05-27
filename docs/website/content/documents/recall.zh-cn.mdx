@@ -1,0 +1,27 @@
+Recall 会找到与当前任务相关的记忆，并把它们作为候选展示。
+
+## 召回如何选择候选
+
+Recall 会组合多种信号：记忆内容和生成视图的文本搜索、术语匹配、披露触发条件、优先级，以及配置了 embedding 时的语义检索。具体候选列表取决于设置和可用数据库扩展。
+
+## 召回块格式
+
+Agent prompt 中的召回块如下所示：
+
+```text
+<recall session_id="sess-1" query_id="q1">
+0.74 | preferences://user | 简洁回复 · 时区
+0.68 | project://my_app/deployment | cloudflare pages · 构建命令
+</recall>
+```
+
+每行展示分数、记忆 URI 和匹配的术语。分数是相关性信号而非命令——始终先打开节点再依赖它。
+
+## 如何使用召回
+
+1. 阅读召回块。
+2. 用 `lore_get_node` 打开相关记忆节点（传入 `session_id` 和 `query_id`，让 Lore 追踪使用情况）。
+3. 忽略弱相关或无关候选。
+4. 当同一条有用记忆反复缺失时，改善记忆结构。
+
+在检查记忆是否有好的 disclosure、glossary 和 priority 之前，不要先调召回阈值。

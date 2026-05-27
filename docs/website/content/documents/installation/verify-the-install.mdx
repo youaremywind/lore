@@ -1,0 +1,28 @@
+Verify the server first, then verify each connected agent.
+
+## Verification checklist
+
+Server checks:
+
+```bash
+curl -fsS http://127.0.0.1:18901/api/health
+```
+
+Then open the Web Console and check:
+
+| Area | What to verify |
+| --- | --- |
+| `/setup` | setup is complete and model endpoints are saved |
+| `/memory` | boot memories and domains are visible |
+| `/recall` | a realistic query returns candidates or a clear empty result |
+| settings | embedding, View LLM, recall, backup, and auth values match your deployment |
+
+Agent checks:
+
+1. Restart the runtime after installing or changing config.
+2. Confirm the Lore MCP server appears in that runtime.
+3. Ask the agent to load boot memory or call `lore_status`.
+4. Send a realistic project prompt and check whether a `<recall>` block appears.
+5. If a recall line appears, open the memory node before relying on it.
+
+For Codex, open `/hooks` and trust Lore hooks if prompted. For Claude Code, confirm `~/.claude/CLAUDE.md` imports `@~/.claude/lore-guidance.md`. Both runtimes should share `~/.lore/config.json` for the Lore server URL and token.

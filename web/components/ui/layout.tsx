@@ -2,6 +2,7 @@
 
 import React, { type ReactNode } from 'react';
 import clsx from 'clsx';
+import { AuroraBackground } from '@lobehub/ui/awesome';
 import LobeBlock from '@lobehub/ui/es/Block/index';
 import LobeModal from '@lobehub/ui/es/Modal/index';
 import { Spinner, surfaceCardClassName } from './controls';
@@ -163,6 +164,16 @@ export function LoadingBlock({ className, label, size = 'md', compact = false, c
       {label ? <div>{label}</div> : null}
       {children}
     </div>
+  );
+}
+
+export function AuroraBackdrop(): React.JSX.Element {
+  return (
+    <AuroraBackground
+      className="absolute inset-0 h-full w-full"
+      classNames={{ content: 'hidden' }}
+      styles={{ content: { display: 'none' } }}
+    />
   );
 }
 

@@ -1,0 +1,68 @@
+Use the installer when you want the shortest path to a working Lore server and local agent integrations.
+
+## Prerequisites
+
+- **Docker** with the Compose plugin (`docker compose`). On macOS, Docker Desktop includes both. On Linux, install Docker Engine and the `docker compose` plugin.
+- At least one supported agent runtime (Claude Code, Codex, Pi, OpenClaw, or Hermes) that you want to connect.
+- An **OpenAI-compatible API key** for embeddings (e.g. OpenAI, DeepSeek, or a local service). You will configure this in `/setup` after the installer finishes. Without it, semantic recall and Dream will not work.
+
+## Run the installer
+
+The default install starts Lore with Docker Compose, writes local client config, and sets up supported agent channels on this machine.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/scripts/install.sh | bash
+```
+
+Chinese-language installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/scripts/install.zh.sh | bash
+```
+
+## What the installer does
+
+- Downloads `docker-compose.yml` and a `.env` template from the Lore repo.
+- Starts the Lore server, PostgreSQL, and Redis containers.
+- Waits for the server to become healthy.
+- Creates `~/.lore/config.json` with server URL and token.
+- Installs MCP configuration and hooks for the selected agent channels.
+- Writes Lore guidance into `~/.claude/lore-guidance.md` (Claude Code) or equivalent locations for other runtimes.
+
+You can inspect `~/.lore/` after the installer finishes to see what was written.
+
+## Common options
+
+| Option | Use it when |
+| --- | --- |
+| `--channels claudecode,codex` | You only want selected integrations. |
+| `--base-url http://host:18901` | Lore is already running somewhere else. This skips server startup. |
+| `--api-token TOKEN` | The server is protected by `API_TOKEN`. |
+| `--skip-docker` | You only want local client integrations. |
+| `--pre` | You want the `pre-latest` release channel. |
+| `--dev` | You want the `dev-latest` release channel. |
+| `--force` | You want to reinstall even if the version looks current. |
+
+## Examples
+
+Install only Codex and Claude Code integrations:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/scripts/install.sh | bash -s -- --channels codex,claudecode
+```
+
+Point this machine's agents at an existing Lore server:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FFatTiger/lore/main/scripts/install.sh | bash -s -- --base-url http://192.168.1.100:18901 --api-token YOUR_TOKEN
+```
+
+## After the installer finishes
+
+1. Open `http://127.0.0.1:18901/setup` unless you connected to an existing server.
+2. Complete embedding, View LLM, and boot memory setup.
+3. Restart the agent runtimes you installed.
+4. For Codex, run `codex mcp list` to confirm Lore is registered. Then open a Codex session and type `/hooks` — trust the Lore hooks if prompted.
+5. Send a realistic prompt and confirm a recall block appears.
+
+If you do not want the installer to manage the server or clients, use [Manual configuration](/documents/installation/manual-configuration).

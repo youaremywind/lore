@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, Waves } from 'lucide-react';
 import clsx from 'clsx';
 import { getDomains, getSetupFlowStatus, AUTH_ERROR_EVENT } from '../lib/api';
 import { getSetupFlowDecision, SETUP_STATUS_CHANGED_EVENT, type SetupFlowStatus } from '@/lib/bootSetup';
@@ -10,8 +10,7 @@ import { LanguageProvider, useT } from '../lib/i18n';
 import { ThemeProvider, useTheme } from '../lib/theme';
 import TokenAuth from './TokenAuth';
 import { ConfirmProvider, useConfirm } from './ConfirmDialog';
-import { AppUIProvider, Button } from './ui';
-import { AuroraBackground } from '@lobehub/ui/awesome';
+import { AppUIProvider, AuroraBackdrop, Button } from './ui';
 import { AxiosError } from 'axios';
 
 const BOOT_SETUP_ACK_KEY = 'lore-boot-setup-confirmed';
@@ -68,7 +67,7 @@ export function NavDock(): React.JSX.Element {
   const pathname = usePathname() || '';
   const router = useRouter();
   const { t, lang, setLang } = useT();
-  const { theme, toggleTheme } = useTheme();
+  const { auroraBackgroundEnabled, theme, toggleAuroraBackground, toggleTheme } = useTheme();
   const navRef = useRef<HTMLElement>(null);
   const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const [hoverHref, setHoverHref] = useState<string | null>(null);
@@ -184,6 +183,20 @@ export function NavDock(): React.JSX.Element {
               ? <Moon size={14} strokeWidth={2} />
               : <Sun size={14} strokeWidth={2} />}
           </button>
+          <button
+            onClick={toggleAuroraBackground}
+            aria-pressed={auroraBackgroundEnabled}
+            aria-label={auroraBackgroundEnabled ? t('Disable Aurora Background') : t('Enable Aurora Background')}
+            title={auroraBackgroundEnabled ? t('Disable Aurora Background') : t('Enable Aurora Background')}
+            className={clsx(
+              'press flex h-9 w-9 md:h-8 md:w-8 shrink-0 items-center justify-center rounded-full transition-colors',
+              auroraBackgroundEnabled
+                ? 'bg-sys-blue/15 text-sys-blue shadow-sm'
+                : 'text-txt-secondary hover:bg-fill-quaternary hover:text-txt-primary',
+            )}
+          >
+            <Waves size={14} strokeWidth={2.2} />
+          </button>
         </div>
 
         <div className="hidden sm:flex items-center rounded-full bg-fill-quaternary p-[3px]">
@@ -209,11 +222,27 @@ interface AppShellInnerProps {
   children: ReactNode;
 }
 
+interface AppShellFrameProps {
+  auroraBackgroundEnabled: boolean;
+  children: ReactNode;
+}
+
+export function AppShellFrame({ auroraBackgroundEnabled, children }: AppShellFrameProps): React.JSX.Element {
+  return (
+    <div className="relative h-screen w-full max-w-full overflow-hidden bg-bg-system text-txt-primary">
+      {auroraBackgroundEnabled ? <AuroraBackdrop /> : null}
+      <NavDock />
+      <div className={appContentClassName}>{children}</div>
+    </div>
+  );
+}
+
 function AppShellInner({ children }: AppShellInnerProps): React.JSX.Element {
   const router = useRouter();
   const pathname = usePathname() || '';
   const { confirm } = useConfirm();
   const { t } = useT();
+  const { auroraBackgroundEnabled } = useTheme();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [backendError, setBackendError] = useState(false);
@@ -425,15 +454,9 @@ function AppShellInner({ children }: AppShellInnerProps): React.JSX.Element {
   }
 
   return (
-    <div className="relative h-screen w-full max-w-full overflow-hidden bg-bg-system text-txt-primary">
-      <AuroraBackground
-        className="absolute inset-0 h-full w-full"
-        classNames={{ content: 'hidden' }}
-        styles={{ content: { display: 'none' } }}
-      />
-      <NavDock />
-      <div className={appContentClassName}>{children}</div>
-    </div>
+    <AppShellFrame auroraBackgroundEnabled={auroraBackgroundEnabled}>
+      {children}
+    </AppShellFrame>
   );
 }
 
